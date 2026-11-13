@@ -1,0 +1,6 @@
+{
+  "name": "KasKilat UMKM",
+  "description": "Aplikasi pembukuan kas masuk dan kas keluar untuk UMKM dengan OCR otomatis dari foto struk, nota, dan bukti transfer.",
+  "requestFramePermissions": ["camera"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
