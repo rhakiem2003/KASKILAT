@@ -94,9 +94,9 @@ export const CashflowChart30Days: React.FC<CashflowChart30DaysProps> = ({ transa
       </div>
 
       {/* Info Tooltip Hover */}
-      <div className="h-6 flex items-center text-xs">
+      <div className="min-h-6 flex items-center text-xs">
         {hoveredDay ? (
-          <div className="flex items-center gap-3 font-medium animate-in fade-in duration-100">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 font-medium animate-in fade-in duration-100">
             <span className="text-slate-500">{hoveredDay.dayNumber} {hoveredDay.monthName}:</span>
             <span className="text-emerald-600 font-semibold">Masuk: {formatRupiah(hoveredDay.income)}</span>
             <span className="text-rose-600 font-semibold">Keluar: {formatRupiah(hoveredDay.expense)}</span>
@@ -109,8 +109,8 @@ export const CashflowChart30Days: React.FC<CashflowChart30DaysProps> = ({ transa
       </div>
 
       {/* Bar Grafik Canvas SVG */}
-      <div className="relative pt-2 pb-1 overflow-x-auto">
-        <div className="min-w-[480px] h-36 flex items-end justify-between gap-1 border-b border-slate-200 dark:border-slate-800">
+      <div className="relative pt-2 pb-1">
+        <div className="h-36 flex items-end justify-between gap-px sm:gap-1 border-b border-slate-200 dark:border-slate-800">
           {daysData.map((d) => {
             const incomeHeight = Math.max(3, Math.round((d.income / maxVal) * 110));
             const expenseHeight = Math.max(3, Math.round((d.expense / maxVal) * 110));
@@ -121,19 +121,19 @@ export const CashflowChart30Days: React.FC<CashflowChart30DaysProps> = ({ transa
                 key={d.dateStr}
                 onMouseEnter={() => setHoveredDay(d)}
                 onMouseLeave={() => setHoveredDay(null)}
-                className="flex-1 flex flex-col items-center justify-end h-full group cursor-pointer"
+                className="flex-1 min-w-0 flex flex-col items-center justify-end h-full group cursor-pointer"
               >
-                <div className="flex items-end gap-[1.5px] w-full justify-center">
+                <div className="flex items-end gap-px w-full justify-center">
                   {/* Bar Kas Masuk */}
                   <div
-                    className={`w-1.5 sm:w-2 rounded-t-sm transition-all duration-200 ${
+                    className={`flex-1 max-w-[8px] rounded-t-sm transition-all duration-200 ${
                       d.income > 0 ? 'bg-emerald-500 group-hover:bg-emerald-400' : 'bg-slate-100 dark:bg-slate-800'
                     }`}
                     style={{ height: `${d.income > 0 ? incomeHeight : 3}px` }}
                   />
                   {/* Bar Kas Keluar */}
                   <div
-                    className={`w-1.5 sm:w-2 rounded-t-sm transition-all duration-200 ${
+                    className={`flex-1 max-w-[8px] rounded-t-sm transition-all duration-200 ${
                       d.expense > 0 ? 'bg-rose-500 group-hover:bg-rose-400' : 'bg-slate-100 dark:bg-slate-800'
                     }`}
                     style={{ height: `${d.expense > 0 ? expenseHeight : 3}px` }}
@@ -145,7 +145,7 @@ export const CashflowChart30Days: React.FC<CashflowChart30DaysProps> = ({ transa
         </div>
 
         {/* Label Tanggal bawah */}
-        <div className="min-w-[480px] flex justify-between text-[10px] text-slate-400 pt-1 font-mono">
+        <div className="flex justify-between text-[10px] text-slate-400 pt-1 font-mono">
           <span>{daysData[0]?.dayNumber} {daysData[0]?.monthName}</span>
           <span>{daysData[14]?.dayNumber} {daysData[14]?.monthName}</span>
           <span>Hari Ini ({daysData[29]?.dayNumber} {daysData[29]?.monthName})</span>

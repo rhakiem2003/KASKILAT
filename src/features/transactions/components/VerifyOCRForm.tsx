@@ -61,9 +61,9 @@ export const VerifyOCRForm: React.FC<VerifyOCRFormProps> = ({
   };
 
   const handleAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const raw = e.target.value;
-    const num = parseRupiah(raw);
-    setAmountStr(num > 0 ? formatRupiah(num, false) : raw);
+    // Titik pemisah ribuan ikut terketik ulang, jadi hanya digit yang dihitung.
+    const digits = e.target.value.replace(/\D/g, '');
+    setAmountStr(digits ? formatRupiah(Number(digits), false) : '');
   };
 
   const handleSubmit = (e: React.FormEvent) => {
