@@ -1,6 +1,6 @@
 /**
  * @file useInstallPrompt.ts
- * @description Hook tombol "Install App" untuk PWA (beforeinstallprompt).
+ * @description Hook tombol "Install App" untuk PWA (beforeinstallprompt) + deteksi iOS.
  */
 
 import { useEffect, useState } from 'react';
@@ -15,6 +15,19 @@ const listeners = new Set<(available: boolean) => void>();
 
 function notify(): void {
   for (const listener of listeners) listener(Boolean(deferredPrompt));
+}
+
+function isIosDevice(): boolean {
+  if (typeof navigator === 'undefined') return false;
+  return /iphone|ipad|ipod/i.test(navigator.userAgent);
+}
+
+function isStandalone(): boolean {
+  if (typeof window === 'undefined') return false;
+  return (
+    window.matchMedia('(display-mode: standalone)').matches ||
+    (navigator as Navigator & { standalone?: boolean }).standalone === true
+  );
 }
 
 if (typeof window !== 'undefined') {
@@ -50,5 +63,8 @@ export function useInstallPrompt() {
     return choice.outcome;
   };
 
-  return { canInstall, install };
+  // iOS Safari tidak pernah memicu beforeinstallprompt: pandu lewat menu Bagikan.
+  const needsManualInstall = isIosDevice() && !isStandalone();
+
+  return { canInstall, needsManualInstall, install };
 }
