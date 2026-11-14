@@ -24,6 +24,7 @@ export interface Transaction {
 }
 
 export interface CreateTransactionInput {
+  id?: string;
   type: TransactionType;
   amount: number;
   transaction_date: string;

@@ -1,34 +1,28 @@
 /**
  * @file useTransactions.ts
- * @description Hook React untuk membaca dan memfilter data transaksi kas masuk/keluar.
+ * @description Hook React untuk membaca, memfilter, dan merangkum transaksi dari database-store.
  */
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
-import { Transaction, TransactionFilter, TransactionSummary } from '../types/transaction.type';
-import { getTransactions, deleteTransaction } from '../services/transaction.service';
+import { useMemo, useState } from 'react';
+import type {
+  TransactionFilter,
+  TransactionSummary,
+} from '../types/transaction.type';
+import { useAppDatabase } from '../../database/hooks/useAppDatabase';
+import {
+  deleteTransaction as removeTransaction,
+  filterTransactions,
+} from '../../database/services/database-store';
 
 export function useTransactions(initialFilter?: TransactionFilter) {
-  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const { database, status } = useAppDatabase();
   const [filter, setFilter] = useState<TransactionFilter>(initialFilter || { type: 'all' });
-  const [isLoading, setIsLoading] = useState<boolean>(true);
-  const [error, setError] = useState<string | null>(null);
 
-  const fetchTransactions = useCallback(async () => {
-    setIsLoading(true);
-    setError(null);
-    try {
-      const data = await getTransactions(filter);
-      setTransactions(data);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Gagal memuat transaksi.');
-    } finally {
-      setIsLoading(false);
-    }
-  }, [filter]);
-
-  useEffect(() => {
-    fetchTransactions();
-  }, [fetchTransactions]);
+  const isLoading = status === 'loading';
+  const transactions = useMemo(() => {
+    if (!database) return [];
+    return filterTransactions(database.transactions, filter);
+  }, [database, filter]);
 
   const summary = useMemo<TransactionSummary>(() => {
     const currentMonth = new Date().toISOString().substring(0, 7); // YYYY-MM
@@ -62,23 +56,18 @@ export function useTransactions(initialFilter?: TransactionFilter) {
     };
   }, [transactions]);
 
-  const removeTransaction = async (id: string) => {
-    try {
-      await deleteTransaction(id);
-      setTransactions((prev) => prev.filter((t) => t.id !== id));
-    } catch (err) {
-      throw err;
-    }
+  const deleteTransaction = async (id: string) => {
+    await removeTransaction(id);
   };
 
   return {
     transactions,
     isLoading,
-    error,
+    error: null,
     filter,
     setFilter,
     summary,
-    refreshTransactions: fetchTransactions,
-    deleteTransaction: removeTransaction,
+    refreshTransactions: () => undefined,
+    deleteTransaction,
   };
 }

@@ -14,7 +14,7 @@ export interface PreparedImage {
 }
 
 const MAX_DIMENSION = 1600;
-const JPEG_QUALITY = 0.85;
+const JPEG_QUALITY = 0.8;
 
 /**
  * Screenshot/digital capture diproses Tesseract; foto kamera diproses Gemini.

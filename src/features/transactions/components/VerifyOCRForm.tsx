@@ -17,6 +17,7 @@ interface VerifyOCRFormProps {
   parsedData: ParsedOCRData | null;
   categories: Category[];
   photoUrl?: string;
+  suggestedCategoryId?: string | null;
   isSubmitting?: boolean;
   onSave: (transactionData: CreateTransactionInput) => void;
   onCancel: () => void;
@@ -26,6 +27,7 @@ export const VerifyOCRForm: React.FC<VerifyOCRFormProps> = ({
   parsedData,
   categories,
   photoUrl,
+  suggestedCategoryId,
   isSubmitting = false,
   onSave,
   onCancel,
@@ -45,8 +47,9 @@ export const VerifyOCRForm: React.FC<VerifyOCRFormProps> = ({
 
   // Kategori yang cocok dengan jenis transaksi saat ini (in / out)
   const filteredCategories = categories.filter((c) => c.type === type);
+  const suggested = filteredCategories.find((c) => c.id === suggestedCategoryId);
   const [categoryId, setCategoryId] = useState<string>(
-    filteredCategories[0]?.id || ''
+    suggested?.id || filteredCategories[0]?.id || ''
   );
 
   const handleTypeChange = (newType: TransactionType) => {

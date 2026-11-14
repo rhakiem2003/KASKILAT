@@ -1,14 +1,16 @@
 /**
  * @file PhotoUploader.tsx
- * @description Komponen pemilih foto struk melalui kamera hp, upload file, atau preset nota contoh.
+ * @description Dua jalur unggah: kamera untuk struk kertas, atau screenshot untuk bukti transfer / e-wallet.
  */
 
 import React, { useRef } from 'react';
-import { Camera, Upload, Sparkles, Image as ImageIcon } from 'lucide-react';
+import { Camera, Upload, Sparkles, Image as ImageIcon, ShieldCheck } from 'lucide-react';
+import type { ImageKind } from '../../../lib/image-source';
+import { capturePhotoWithCamera } from '../../../lib/camera';
 import { SAMPLE_RECEIPTS, SampleReceipt } from '../utils/sampleReceipts';
 
 interface PhotoUploaderProps {
-  onImageSelected: (imageSource: string | File, previewUrl: string) => void;
+  onImageSelected: (imageSource: string | File, previewUrl: string, kind: ImageKind) => void;
   isLoading?: boolean;
 }
 
@@ -19,49 +21,64 @@ export const PhotoUploader: React.FC<PhotoUploaderProps> = ({
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const galleryInputRef = useRef<HTMLInputElement>(null);
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = (
+    e: React.ChangeEvent<HTMLInputElement>,
+    kind: ImageKind
+  ) => {
     const file = e.target.files?.[0];
     if (!file) return;
     const previewUrl = URL.createObjectURL(file);
-    onImageSelected(file, previewUrl);
+    onImageSelected(file, previewUrl, kind);
+    e.target.value = '';
   };
 
   const handleSelectSample = (sample: SampleReceipt) => {
     const dataUrl = sample.generateImage();
-    onImageSelected(dataUrl, dataUrl);
+    onImageSelected(dataUrl, dataUrl, 'screenshot');
+  };
+
+  const handleCameraClick = async () => {
+    const result = await capturePhotoWithCamera();
+    if (result.status === 'captured') {
+      onImageSelected(result.dataUrl, result.dataUrl, 'photo');
+      return;
+    }
+    if (result.status === 'unavailable') {
+      cameraInputRef.current?.click();
+    }
   };
 
   return (
     <div className="w-full space-y-4">
-      {/* Hidden file inputs */}
       <input
         ref={cameraInputRef}
         type="file"
         accept="image/*"
         capture="environment"
         className="hidden"
-        onChange={handleFileChange}
+        onChange={(e) => handleFileChange(e, 'photo')}
       />
       <input
         ref={galleryInputRef}
         type="file"
-        accept="image/png,image/jpeg,image/webp"
+        accept="image/*"
         className="hidden"
-        onChange={handleFileChange}
+        onChange={(e) => handleFileChange(e, 'screenshot')}
       />
 
-      {/* Action buttons: Kamera & Galeri */}
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <button
           type="button"
           disabled={isLoading}
-          onClick={() => cameraInputRef.current?.click()}
-          className="flex flex-col items-center justify-center p-4 rounded-2xl border-2 border-emerald-500/30 bg-emerald-50/60 dark:bg-emerald-950/20 text-emerald-700 dark:text-emerald-400 hover:border-emerald-500 hover:bg-emerald-100/50 transition-all active:scale-[0.98] min-h-[92px]"
+          onClick={handleCameraClick}
+          className="flex items-center gap-3 p-4 rounded-2xl border-2 border-emerald-500/40 bg-emerald-50/70 dark:bg-emerald-950/20 text-emerald-800 dark:text-emerald-300 hover:border-emerald-500 hover:bg-emerald-100/60 transition-all active:scale-[0.98] min-h-[76px] text-left"
         >
-          <Camera className="w-6 h-6 mb-1.5 shrink-0" />
-          <span className="text-xs font-semibold">Foto Kamera</span>
-          <span className="text-[11px] text-emerald-600/70 dark:text-emerald-400/70">
-            Jepret struk langsung
+          <span className="text-2xl shrink-0" aria-hidden="true">📷</span>
+          <span className="min-w-0">
+            <span className="block text-sm font-bold">Camera</span>
+            <span className="block text-[11px] text-emerald-700/80 dark:text-emerald-400/80">
+              Foto Struk Kertas
+            </span>
           </span>
         </button>
 
@@ -69,16 +86,26 @@ export const PhotoUploader: React.FC<PhotoUploaderProps> = ({
           type="button"
           disabled={isLoading}
           onClick={() => galleryInputRef.current?.click()}
-          className="flex flex-col items-center justify-center p-4 rounded-2xl border-2 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 hover:border-slate-300 dark:hover:border-slate-700 transition-all active:scale-[0.98] min-h-[92px]"
+          className="flex items-center gap-3 p-4 rounded-2xl border-2 border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 hover:border-slate-300 dark:hover:border-slate-600 transition-all active:scale-[0.98] min-h-[76px] text-left"
         >
-          <Upload className="w-6 h-6 mb-1.5 shrink-0 text-slate-500" />
-          <span className="text-xs font-semibold">Upload Foto</span>
-          <span className="text-[11px] text-slate-400">Dari galeri / file</span>
+          <span className="text-2xl shrink-0" aria-hidden="true">🖼️</span>
+          <span className="min-w-0">
+            <span className="block text-sm font-bold">Upload Screenshot</span>
+            <span className="block text-[11px] text-slate-500 dark:text-slate-400">
+              Bukti Transfer / E-Wallet
+            </span>
+          </span>
         </button>
       </div>
 
-      {/* Preset 3 Struk Riil UMKM untuk testing instan */}
-      <div className="pt-2">
+      <div className="flex items-start gap-2 px-1 text-[11px] text-slate-500 dark:text-slate-400">
+        <ShieldCheck className="w-3.5 h-3.5 shrink-0 mt-0.5 text-emerald-600" />
+        <span>
+          Foto struk tidak memenuhi Galeri HP kamu. Tersimpan rapi di Drive.
+        </span>
+      </div>
+
+      <div className="pt-1">
         <div className="flex items-center gap-1.5 mb-2.5">
           <Sparkles className="w-3.5 h-3.5 text-amber-500" />
           <span className="text-xs font-semibold text-slate-600 dark:text-slate-400">

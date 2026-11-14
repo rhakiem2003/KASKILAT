@@ -12,7 +12,7 @@ import {
   ParsedOCRData,
 } from '../types/ocr.type';
 import { parseReceiptText } from '../utils/ocr-parser';
-import { getGeminiApiKey } from '../../../lib/settings';
+import { getGeminiApiKey } from '../../../lib/gemini-settings';
 import { prepareImage } from '../../../lib/image-source';
 import type { ImageKind } from '../../../lib/image-source';
 import { runGeminiOCR } from './gemini-ocr.service';

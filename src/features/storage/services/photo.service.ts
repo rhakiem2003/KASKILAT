@@ -1,6 +1,6 @@
 /**
  * @file photo.service.ts
- * @description Abstraksi penyimpanan foto struk: Google Drive jika terhubung, fallback IndexedDB lokal.
+ * @description Penyimpanan foto struk: Google Drive (akun login) atau IndexedDB (tamu/offline).
  * Referensi foto disimpan di transaksi sebagai "drive://<fileId>" atau "local://<photoId>".
  */
 
@@ -25,6 +25,10 @@ export interface SavedPhoto {
   warning?: string;
 }
 
+export interface SavePhotoOptions {
+  transactionId?: string;
+}
+
 function isDirectUrl(ref: string): boolean {
   return (
     ref.startsWith('data:') ||
@@ -34,7 +38,9 @@ function isDirectUrl(ref: string): boolean {
   );
 }
 
-function buildDriveFileName(): string {
+function buildDriveFileName(transactionId?: string): string {
+  if (transactionId) return `${transactionId}.jpg`;
+
   const now = new Date();
   const pad = (value: number) => String(value).padStart(2, '0');
   const stamp =
@@ -52,19 +58,25 @@ function cacheObjectUrl(ref: string, blob: Blob): string {
 }
 
 /**
- * Menyimpan foto struk. Drive diutamakan; jika belum terhubung/gagal, foto masuk IndexedDB.
- * Kegagalan Drive dikembalikan sebagai `warning` agar bisa ditampilkan ke pengguna.
+ * Menyimpan foto struk. Drive diutamakan (saat login); jika belum login/gagal,
+ * foto masuk IndexedDB dan tidak pernah diunduh ke Galeri HP.
  */
-export async function saveReceiptPhoto(source: string | File): Promise<SavedPhoto> {
+export async function saveReceiptPhoto(
+  source: string | File,
+  options: SavePhotoOptions = {}
+): Promise<SavedPhoto> {
   const prepared = await prepareImage(source);
 
   let warning: string | undefined;
 
   if (isDriveConnected()) {
     try {
-      const file = await uploadFileToDrive(prepared.blob, buildDriveFileName());
+      const file = await uploadFileToDrive(
+        prepared.blob,
+        buildDriveFileName(options.transactionId)
+      );
       putPhotoBlob(`drive:${file.id}`, prepared.blob).catch(() => {
-        // Cache lokal opsional; kegagalan cache tidak menggagalkan upload
+        // Cache lokal opsional
       });
       return { ref: `${DRIVE_PREFIX}${file.id}`, provider: 'drive' };
     } catch (error) {
@@ -80,15 +92,17 @@ export async function saveReceiptPhoto(source: string | File): Promise<SavedPhot
 
 /**
  * Mengunggah ulang satu foto yang masih tersimpan lokal ke Drive.
- * Mengembalikan ref baru (`drive://...`) atau null jika tidak ada yang perlu dipindahkan.
  */
-export async function migratePhotoToDrive(ref: string): Promise<string | null> {
+export async function migratePhotoToDrive(
+  ref: string,
+  transactionId?: string
+): Promise<string | null> {
   if (!isDriveConnected() || !ref.startsWith(LOCAL_PREFIX)) return null;
 
   const blob = await getPhotoBlob(ref.slice(LOCAL_PREFIX.length));
   if (!blob) return null;
 
-  const file = await uploadFileToDrive(blob, buildDriveFileName());
+  const file = await uploadFileToDrive(blob, buildDriveFileName(transactionId));
   putPhotoBlob(`drive:${file.id}`, blob).catch(() => {
     // Cache lokal opsional
   });
@@ -97,7 +111,6 @@ export async function migratePhotoToDrive(ref: string): Promise<string | null> {
 
 /**
  * Mengubah referensi foto menjadi URL yang bisa dipakai <img src>.
- * Mengembalikan null jika foto Drive tidak ter-cache dan Drive sedang tidak terhubung.
  */
 export async function resolvePhotoUrl(ref?: string | null): Promise<string | null> {
   if (!ref) return null;

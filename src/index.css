@@ -20,3 +20,9 @@ html, body {
 .tabular-nums {
   font-variant-numeric: tabular-nums;
 }
+
+/* Ruang aman untuk iPhone dengan home indicator */
+.pb-safe {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+

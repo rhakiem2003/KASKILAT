@@ -1,9 +1,10 @@
 /**
  * @file ScanReceiptModal.tsx
- * @description Dialog modal alur pemindaian foto struk otomatis dan verifikasi sebelum simpan.
+ * @description Alur OCR: kamera (Gemini → Tesseract) atau screenshot (Tesseract → Gemini),
+ * lalu verifikasi data sebelum disimpan.
  */
 
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { AlertTriangle, CheckCircle2, Settings } from 'lucide-react';
 import { Modal } from '../../../components/ui/Modal';
 import { Button } from '../../../components/ui/Button';
@@ -15,6 +16,10 @@ import { CreateTransactionInput } from '../../transactions/types/transaction.typ
 import { OCRProgressState, ParsedOCRData } from '../types/ocr.type';
 import { recognizeReceipt } from '../services/ocr.service';
 import { saveReceiptPhoto } from '../../storage/services/photo.service';
+import { createTransactionId } from '../../database/services/database-utils';
+import { suggestCategoryId } from '../utils/category-suggestions';
+import type { ImageKind } from '../../../lib/image-source';
+import { showToast } from '../../../lib/toast';
 
 interface ScanReceiptModalProps {
   isOpen: boolean;
@@ -33,6 +38,7 @@ export const ScanReceiptModal: React.FC<ScanReceiptModalProps> = ({
 }) => {
   const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
   const [pendingImage, setPendingImage] = useState<string | File | null>(null);
+  const [imageKind, setImageKind] = useState<ImageKind>('photo');
   const [parsedData, setParsedData] = useState<ParsedOCRData | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [photoWarning, setPhotoWarning] = useState<string | null>(null);
@@ -43,6 +49,14 @@ export const ScanReceiptModal: React.FC<ScanReceiptModalProps> = ({
     message: '',
   });
 
+  const suggestedCategoryId = useMemo(() => {
+    if (!parsedData) return null;
+    const text = [parsedData.merchant, parsedData.description, parsedData.rawText]
+      .filter(Boolean)
+      .join(' ');
+    return suggestCategoryId(text, parsedData.detectedType, categories);
+  }, [parsedData, categories]);
+
   const handleReset = () => {
     setPreviewImageUrl(null);
     setPendingImage(null);
@@ -50,6 +64,7 @@ export const ScanReceiptModal: React.FC<ScanReceiptModalProps> = ({
     setIsSubmitting(false);
     setPhotoWarning(null);
     setIsSaved(false);
+    setImageKind('photo');
     setProgressState({ status: 'idle', progress: 0, message: '' });
   };
 
@@ -58,19 +73,30 @@ export const ScanReceiptModal: React.FC<ScanReceiptModalProps> = ({
     onClose();
   };
 
-  const handleImageSelected = async (imageSource: string | File, previewUrl: string) => {
+  const handleImageSelected = async (
+    imageSource: string | File,
+    previewUrl: string,
+    kind: ImageKind
+  ) => {
     setPreviewImageUrl(previewUrl);
     setPendingImage(imageSource);
+    setImageKind(kind);
     try {
-      // Screenshot → Tesseract, foto kamera → Gemini AI (fallback otomatis)
-      const result = await recognizeReceipt(imageSource, (state) => {
-        setProgressState(state);
-      });
+      const result = await recognizeReceipt(
+        imageSource,
+        (state) => {
+          setProgressState(state);
+        },
+        { kind }
+      );
+
+      if (result.engine === 'tesseract' && result.parsed.fallbackReason) {
+        showToast('Gemini gagal, pakai OCR offline', 'info');
+      }
 
       setParsedData(result.parsed);
     } catch (err) {
       console.warn('OCR gagal, lanjut isi manual:', err);
-      // Jika terjadi kendala OCR, izinkan pengguna tetap mengisi data manual dengan foto tetap tersimpan
       setParsedData({
         amount: null,
         date: new Date().toISOString().split('T')[0],
@@ -86,12 +112,14 @@ export const ScanReceiptModal: React.FC<ScanReceiptModalProps> = ({
   const handleSaveTransaction = async (data: CreateTransactionInput) => {
     setIsSubmitting(true);
     let warning: string | null = null;
+    const transactionId = data.id ?? createTransactionId();
+
     try {
       let photoUrl = data.photo_url;
 
       if (pendingImage) {
         try {
-          const saved = await saveReceiptPhoto(pendingImage);
+          const saved = await saveReceiptPhoto(pendingImage, { transactionId });
           photoUrl = saved.ref;
           warning = saved.warning || null;
         } catch (photoError) {
@@ -103,10 +131,9 @@ export const ScanReceiptModal: React.FC<ScanReceiptModalProps> = ({
         }
       }
 
-      await onTransactionSaved({ ...data, photo_url: photoUrl });
+      await onTransactionSaved({ ...data, id: transactionId, photo_url: photoUrl });
 
       if (warning) {
-        // Biarkan modal terbuka agar kegagalan Drive terlihat, bukan hilang senyap
         setPhotoWarning(warning);
         setIsSaved(true);
       } else {
@@ -114,6 +141,7 @@ export const ScanReceiptModal: React.FC<ScanReceiptModalProps> = ({
       }
     } catch (err) {
       console.error('Gagal menyimpan transaksi:', err);
+      showToast('Gagal menyimpan transaksi. Coba lagi.', 'error');
     } finally {
       setIsSubmitting(false);
     }
@@ -123,11 +151,11 @@ export const ScanReceiptModal: React.FC<ScanReceiptModalProps> = ({
     <Modal
       isOpen={isOpen}
       onClose={handleClose}
-      title={previewImageUrl ? 'Verifikasi Data Struk' : 'Foto Bukti Transaksi Kas'}
+      title={previewImageUrl ? 'Verifikasi Data Struk' : 'Catat dari Foto / Screenshot'}
       description={
         previewImageUrl
-          ? 'Periksa kembali data yang otomatis dibaca oleh sistem sebelum disimpan'
-          : 'Jepret atau pilih foto nota belanja / bukti transfer pembayaran'
+          ? 'Periksa kembali data yang dibaca otomatis sebelum disimpan'
+          : 'Pilih kamera untuk struk kertas, atau unggah screenshot bukti transfer'
       }
       maxWidth="lg"
     >
@@ -148,8 +176,8 @@ export const ScanReceiptModal: React.FC<ScanReceiptModalProps> = ({
                   <p className="font-semibold">Foto belum masuk ke Google Drive</p>
                   <p>{photoWarning}</p>
                   <p>
-                    Foto sementara disimpan di perangkat. Buka Pengaturan → Google Drive untuk
-                    menguji koneksi atau mengunggah ulang foto lokal.
+                    Foto disimpan sementara di HP ini. Buka Pengaturan untuk menguji koneksi Drive
+                    atau unggah ulang foto lokal.
                   </p>
                 </div>
               </div>
@@ -186,9 +214,11 @@ export const ScanReceiptModal: React.FC<ScanReceiptModalProps> = ({
 
             {parsedData && (
               <VerifyOCRForm
+                key={`${imageKind}-${parsedData.merchant ?? ''}-${parsedData.amount ?? 0}`}
                 parsedData={parsedData}
                 categories={categories}
                 photoUrl={previewImageUrl}
+                suggestedCategoryId={suggestedCategoryId}
                 isSubmitting={isSubmitting}
                 onSave={handleSaveTransaction}
                 onCancel={handleReset}

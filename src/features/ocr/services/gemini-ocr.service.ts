@@ -4,7 +4,7 @@
  * Model diminta mengembalikan JSON terstruktur sehingga tidak perlu parsing regex manual.
  */
 
-import { getGeminiApiKey } from '../../../lib/settings';
+import { getGeminiApiKey, getGeminiModel } from '../../../lib/gemini-settings';
 import { PAYMENT_METHODS, PaymentMethod } from '../../../lib/constants';
 import { OCRProgressState, OCRRecognitionResult, ParsedOCRData } from '../types/ocr.type';
 import {
@@ -17,7 +17,7 @@ import {
 import { parseRupiah } from '../../transactions/utils/formatRupiah';
 import { TransactionType } from '../../transactions/types/transaction.type';
 
-const DEFAULT_MODEL = 'gemini-3.6-flash';
+const DEFAULT_MODEL = 'gemini-3-flash-preview';
 // Model 2.5 sudah deprecated; dicoba terakhir agar API key lama tetap berfungsi.
 const FALLBACK_MODELS = ['gemini-3.5-flash-lite', 'gemini-3.8-flash', 'gemini-2.5-flash'];
 const REQUEST_TIMEOUT_MS = 45000;
@@ -244,7 +244,7 @@ export async function runGeminiOCR(
     throw new Error('Gemini API key belum diisi. Buka Pengaturan untuk menambahkannya.');
   }
 
-  const configuredModel = String(import.meta.env.VITE_GEMINI_MODEL || DEFAULT_MODEL).trim();
+  const configuredModel = getGeminiModel() || DEFAULT_MODEL;
   const models = [configuredModel, ...FALLBACK_MODELS].filter(
     (model, index, list) => model && list.indexOf(model) === index
   );

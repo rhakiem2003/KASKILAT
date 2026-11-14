@@ -1,224 +1,127 @@
 /**
  * @file drive.service.ts
- * @description Integrasi Google Drive via Google Identity Services (OAuth token di browser)
- * dengan scope drive.file: aplikasi hanya bisa mengakses file/folder yang dibuatnya sendiri.
+ * @description Google Drive sebagai database pengguna.
+ * Struktur: folder `KasKilat` / `kaskilat-database.json` + subfolder `photos`.
+ * Scope drive.file: aplikasi hanya melihat file yang dibuatnya sendiri.
  */
 
-import { getGoogleClientId } from '../../../lib/settings';
+import {
+  ensureAccessToken,
+  getSessionEmail,
+  hasGoogleSession,
+  isGoogleConfigured,
+  GoogleAuthError,
+} from '../../auth/services/auth.service';
+import { APP_CONFIG } from '../../../lib/constants';
+import type { KasKilatDatabase } from '../../database/types/database.type';
+import { normalizeDatabase } from '../../database/services/database-utils';
 
-const GSI_SRC = 'https://accounts.google.com/gsi/client';
 const DRIVE_API = 'https://www.googleapis.com/drive/v3';
 const DRIVE_UPLOAD_API = 'https://www.googleapis.com/upload/drive/v3';
-const SCOPES = 'openid email https://www.googleapis.com/auth/drive.file';
-const FOLDER_NAME = 'KasKilat UMKM';
-const TOKEN_KEY = 'kaskilat_gdrive_token';
-const FOLDER_KEY = 'kaskilat_gdrive_folder';
+
+const FOLDER_NAME = 'KasKilat';
+const LEGACY_FOLDER_NAME = 'KasKilat UMKM';
+const PHOTOS_FOLDER_NAME = 'photos';
+const DATABASE_FILE_NAME = 'kaskilat-database.json';
+
 const FOLDER_URL_BASE = 'https://drive.google.com/drive/folders';
 const FILE_URL_BASE = 'https://drive.google.com/file/d';
-// PNG 1x1 untuk uji unggah tanpa mengganggu folder
+
+const CACHE_PREFIX = APP_CONFIG.STORAGE_KEYS.DRIVE_FOLDER_PREFIX;
+
+// PNG 1x1 untuk uji unggah
 const TEST_PNG_BASE64 =
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
 
-interface TokenResponse {
-  access_token?: string;
-  expires_in?: number | string;
-  error?: string;
-  error_description?: string;
-}
-
-interface TokenClient {
-  requestAccessToken: (overrides?: { prompt?: string }) => void;
-}
-
-interface TokenClientConfig {
-  client_id: string;
-  scope: string;
-  callback: (response: TokenResponse) => void;
-  error_callback?: (error: { type?: string; message?: string }) => void;
-}
-
-declare global {
-  interface Window {
-    google?: {
-      accounts: {
-        oauth2: {
-          initTokenClient: (config: TokenClientConfig) => TokenClient;
-          revoke: (token: string, done?: () => void) => void;
-        };
-      };
-    };
-  }
-}
-
-interface StoredToken {
-  accessToken: string;
-  expiresAt: number;
-  email?: string;
-}
-
-export class DriveAuthError extends Error {
-  constructor(message: string) {
+export class DriveError extends Error {
+  constructor(message: string, public readonly status?: number) {
     super(message);
-    this.name = 'DriveAuthError';
+    this.name = 'DriveError';
   }
 }
 
-let token: StoredToken | null = readStoredToken();
+export interface DriveDatabaseResult {
+  database: KasKilatDatabase;
+  fileId: string;
+}
 
-function readStoredToken(): StoredToken | null {
+export interface DriveTestResult {
+  fileId: string;
+  fileName: string;
+  folderId: string;
+  folderUrl: string;
+  fileUrl: string;
+}
+
+/* ------------------------------------------------------------------ */
+/* Status koneksi                                                      */
+/* ------------------------------------------------------------------ */
+
+export function isDriveConfigured(): boolean {
+  return isGoogleConfigured();
+}
+
+export function isDriveConnected(): boolean {
+  return hasGoogleSession();
+}
+
+export function getConnectedDriveEmail(): string | null {
+  return getSessionEmail();
+}
+
+/* ------------------------------------------------------------------ */
+/* Cache ID per akun                                                   */
+/* ------------------------------------------------------------------ */
+
+function cacheKey(kind: 'folder' | 'photos' | 'database'): string | null {
+  const email = getSessionEmail();
+  return email ? `${CACHE_PREFIX}${email.toLowerCase()}_${kind}` : null;
+}
+
+function readCache(kind: 'folder' | 'photos' | 'database'): string | null {
+  const key = cacheKey(kind);
+  if (!key) return null;
   try {
-    const raw = sessionStorage.getItem(TOKEN_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as StoredToken;
-    if (!parsed.accessToken || parsed.expiresAt <= Date.now() + 30_000) return null;
-    return parsed;
+    return localStorage.getItem(key);
   } catch {
     return null;
   }
 }
 
-function persistToken(next: StoredToken | null): void {
-  token = next;
+function writeCache(kind: 'folder' | 'photos' | 'database', value: string | null): void {
+  const key = cacheKey(kind);
+  if (!key) return;
   try {
-    if (next) sessionStorage.setItem(TOKEN_KEY, JSON.stringify(next));
-    else sessionStorage.removeItem(TOKEN_KEY);
+    if (value) localStorage.setItem(key, value);
+    else localStorage.removeItem(key);
   } catch {
-    // sessionStorage bisa diblokir; token tetap hidup di memori
+    // cache hanya optimasi
   }
 }
 
-export function isDriveConfigured(): boolean {
-  return Boolean(getGoogleClientId());
+export function clearDriveCache(): void {
+  writeCache('folder', null);
+  writeCache('photos', null);
+  writeCache('database', null);
 }
 
-export function isDriveConnected(): boolean {
-  return Boolean(token && token.expiresAt > Date.now() + 30_000);
+export function getCachedFolderUrl(): string | null {
+  const folderId = readCache('folder');
+  return folderId ? `${FOLDER_URL_BASE}/${folderId}` : null;
 }
 
-export function getConnectedDriveEmail(): string | null {
-  return isDriveConnected() ? token?.email || null : null;
+export function getCachedDatabaseUrl(): string | null {
+  const fileId = readCache('database');
+  return fileId ? `${FILE_URL_BASE}/${fileId}/view` : null;
 }
 
-function requireAccessToken(): string {
-  if (!isDriveConnected() || !token) {
-    throw new DriveAuthError('Google Drive belum terhubung. Buka Pengaturan untuk menghubungkan.');
-  }
-  return token.accessToken;
-}
-
-function loadGsiScript(): Promise<void> {
-  if (window.google?.accounts?.oauth2) return Promise.resolve();
-
-  return new Promise((resolve, reject) => {
-    const existing = document.querySelector<HTMLScriptElement>(`script[src="${GSI_SRC}"]`);
-    if (existing) {
-      existing.addEventListener('load', () => resolve());
-      existing.addEventListener('error', () => reject(new Error('Gagal memuat Google Identity Services.')));
-      return;
-    }
-
-    const script = document.createElement('script');
-    script.src = GSI_SRC;
-    script.async = true;
-    script.defer = true;
-    script.onload = () => resolve();
-    script.onerror = () => reject(new Error('Gagal memuat Google Identity Services.'));
-    document.head.appendChild(script);
-  });
-}
-
-async function fetchUserEmail(accessToken: string): Promise<string | undefined> {
-  try {
-    const response = await fetch(`https://www.googleapis.com/oauth2/v3/userinfo`, {
-      headers: { Authorization: `Bearer ${accessToken}` },
-    });
-    if (!response.ok) return undefined;
-    const data = (await response.json()) as { email?: string };
-    return data.email;
-  } catch {
-    return undefined;
-  }
-}
-
-/**
- * Membuka popup consent Google. Harus dipanggil dari aksi user (klik tombol).
- */
-export async function connectDrive(): Promise<{ email?: string }> {
-  const clientId = getGoogleClientId();
-  if (!clientId) {
-    throw new Error('Google OAuth Client ID belum diisi. Tambahkan dulu di Pengaturan.');
-  }
-
-  await loadGsiScript();
-
-  if (!window.google?.accounts?.oauth2) {
-    throw new Error('Google Identity Services tidak tersedia.');
-  }
-
-  return new Promise((resolve, reject) => {
-    let settled = false;
-    const finish = (fn: () => void) => {
-      if (settled) return;
-      settled = true;
-      fn();
-    };
-
-    const client = window.google!.accounts.oauth2.initTokenClient({
-      client_id: clientId,
-      scope: SCOPES,
-      callback: (response: TokenResponse) => {
-        if (response.error || !response.access_token) {
-          finish(() =>
-            reject(
-              new Error(
-                response.error_description ||
-                  'Izin Google Drive ditolak. Pastikan Client ID & origin sudah benar.'
-              )
-            )
-          );
-          return;
-        }
-
-        const expiresIn = Number(response.expires_in || 3600);
-        persistToken({
-          accessToken: response.access_token,
-          expiresAt: Date.now() + expiresIn * 1000,
-        });
-
-        fetchUserEmail(response.access_token)
-          .then((email) => {
-            if (email && token) {
-              persistToken({ ...token, email });
-            }
-          })
-          .finally(() => finish(() => resolve({ email: token?.email })));
-      },
-      error_callback: (error) => {
-        finish(() =>
-          reject(new Error(error?.message || 'Popup izin Google ditutup sebelum selesai.'))
-        );
-      },
-    });
-
-    client.requestAccessToken({ prompt: '' });
-  });
-}
-
-export function disconnectDrive(): void {
-  const current = token;
-  persistToken(null);
-  localStorage.removeItem(FOLDER_KEY);
-  if (current && window.google?.accounts?.oauth2) {
-    try {
-      window.google.accounts.oauth2.revoke(current.accessToken);
-    } catch {
-      // Abaikan kegagalan revoke
-    }
-  }
-}
+/* ------------------------------------------------------------------ */
+/* Fetch + error handling                                              */
+/* ------------------------------------------------------------------ */
 
 async function authorizedFetch(url: string, init?: RequestInit): Promise<Response> {
-  const accessToken = requireAccessToken();
+  const accessToken = await ensureAccessToken();
+
   let response: Response;
   try {
     response = await fetch(url, {
@@ -229,44 +132,39 @@ async function authorizedFetch(url: string, init?: RequestInit): Promise<Respons
       },
     });
   } catch {
-    throw new Error(
-      'Tidak dapat menghubungi Google Drive. Periksa koneksi internet atau pemblokir iklan.'
+    throw new DriveError(
+      'Tidak dapat menghubungi Google Drive. Periksa koneksi internet lalu coba lagi.'
     );
   }
 
   if (response.status === 401) {
-    persistToken(null);
-    throw new DriveAuthError('Sesi Google Drive berakhir. Hubungkan ulang dari Pengaturan.');
+    throw new GoogleAuthError(
+      'Sesi Google berakhir. Klik Login dengan Google untuk menyambung lagi.'
+    );
   }
   return response;
 }
 
-/**
- * Menerjemahkan error Drive API menjadi langkah perbaikan yang jelas bagi pengguna.
- */
 function describeDriveError(status: number, message: string): string {
   const raw = message || `HTTP ${status}`;
 
-  if (status === 403 && /has not been used|accessNotConfigured|SERVICE_DISABLED|is disabled/i.test(raw)) {
+  if (
+    status === 403 &&
+    /has not been used|accessNotConfigured|SERVICE_DISABLED|is disabled/i.test(raw)
+  ) {
     return (
-      'Google Drive API belum diaktifkan di project Google Cloud. Buka console.cloud.google.com → ' +
-      'APIs & Services → Library → aktifkan "Google Drive API", tunggu 1-2 menit, lalu coba lagi.'
+      'Google Drive API belum diaktifkan pada project Google Cloud. ' +
+      'Buka console.cloud.google.com → APIs & Services → Library → aktifkan "Google Drive API".'
     );
   }
-  if (status === 403 && /insufficient|permission|forbidden/i.test(raw)) {
-    return (
-      'Akun Google tidak punya izin menulis ke folder "KasKilat UMKM". Putuskan lalu hubungkan ' +
-      'ulang Drive, atau hapus folder lama di Drive agar dibuat ulang.'
-    );
+  if (status === 403 && /insufficient|permission|forbidden|storageQuota/i.test(raw)) {
+    return 'Akun Google tidak memberi izin menulis ke Drive. Coba login ulang dengan izin penuh.';
   }
   if (status === 404) {
-    return (
-      'Folder/file tidak ditemukan di akun Google yang terhubung. Cache folder sudah dibersihkan; ' +
-      'coba lagi.'
-    );
+    return 'File/folder tidak ditemukan di Drive akun ini. Folder akan dibuat ulang otomatis.';
   }
   if (status === 429) {
-    return 'Kuota Google Drive sedang penuh. Coba lagi beberapa saat lagi.';
+    return 'Google Drive sedang membatasi permintaan. Coba lagi beberapa saat lagi.';
   }
   if (status >= 500) {
     return 'Server Google Drive sedang bermasalah. Coba lagi beberapa saat lagi.';
@@ -274,107 +172,300 @@ function describeDriveError(status: number, message: string): string {
   return raw;
 }
 
-async function readError(response: Response): Promise<string> {
+async function readErrorText(response: Response): Promise<string> {
   let message = `HTTP ${response.status}`;
   try {
     const body = (await response.json()) as { error?: { message?: string } };
     if (body.error?.message) message = body.error.message;
   } catch {
-    // Respons tanpa JSON; pakai status HTTP
+    // respons tanpa JSON
   }
   return describeDriveError(response.status, message);
 }
 
+async function throwDriveError(response: Response): Promise<never> {
+  throw new DriveError(await readErrorText(response), response.status);
+}
+
+/* ------------------------------------------------------------------ */
+/* Folder                                                              */
+/* ------------------------------------------------------------------ */
+
 async function isFolderUsable(folderId: string): Promise<boolean> {
-  const response = await authorizedFetch(
-    `${DRIVE_API}/files/${encodeURIComponent(folderId)}?fields=id,trashed&supportsAllDrives=true`
-  );
-  if (!response.ok) return false;
   try {
+    const response = await authorizedFetch(
+      `${DRIVE_API}/files/${encodeURIComponent(folderId)}?fields=id,trashed&supportsAllDrives=true`
+    );
+    if (!response.ok) return false;
     const data = (await response.json()) as { id?: string; trashed?: boolean };
     return Boolean(data.id) && !data.trashed;
-  } catch {
+  } catch (error) {
+    if (error instanceof GoogleAuthError) throw error;
     return false;
   }
 }
 
-/**
- * URL folder Drive jika ID-nya sudah pernah di-cache (belum tentu folder masih ada).
- */
-export function getCachedFolderUrl(): string | null {
-  try {
-    const folderId = localStorage.getItem(FOLDER_KEY);
-    return folderId ? `${FOLDER_URL_BASE}/${folderId}` : null;
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Mengambil (atau membuat) folder penyimpanan aplikasi di Drive.
- * ID folder yang tersimpan divalidasi dulu agar folder yang sudah dihapus / milik akun
- * lain tidak membuat semua unggahan gagal.
- */
-export async function getOrCreateFolder(options?: { refresh?: boolean }): Promise<string> {
-  if (!options?.refresh) {
-    const cached = localStorage.getItem(FOLDER_KEY);
-    if (cached) {
-      if (await isFolderUsable(cached)) return cached;
-      localStorage.removeItem(FOLDER_KEY);
-    }
-  }
-
+async function findFolder(name: string): Promise<string | null> {
   const query = encodeURIComponent(
-    `name='${FOLDER_NAME}' and mimeType='application/vnd.google-apps.folder' and trashed=false`
+    `name='${name}' and mimeType='application/vnd.google-apps.folder' and trashed=false`
   );
-  const listResponse = await authorizedFetch(
+  const response = await authorizedFetch(
     `${DRIVE_API}/files?q=${query}&fields=files(id,name)&spaces=drive&pageSize=10`
   );
+  if (!response.ok) await throwDriveError(response);
+  const data = (await response.json()) as { files?: Array<{ id: string }> };
+  return data.files?.[0]?.id ?? null;
+}
 
-  if (!listResponse.ok) {
-    throw new Error(`Gagal mencari folder Drive: ${await readError(listResponse)}`);
-  }
-
-  const list = (await listResponse.json()) as { files?: Array<{ id: string }> };
-  if (list.files && list.files.length > 0) {
-    localStorage.setItem(FOLDER_KEY, list.files[0].id);
-    return list.files[0].id;
-  }
-
-  const createResponse = await authorizedFetch(`${DRIVE_API}/files?fields=id`, {
+async function createFolder(name: string, parentId?: string): Promise<string> {
+  const response = await authorizedFetch(`${DRIVE_API}/files?fields=id`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      name: FOLDER_NAME,
+      name,
       mimeType: 'application/vnd.google-apps.folder',
+      ...(parentId ? { parents: [parentId] } : {}),
     }),
   });
+  if (!response.ok) await throwDriveError(response);
+  const data = (await response.json()) as { id: string };
+  return data.id;
+}
 
-  if (!createResponse.ok) {
-    throw new Error(`Gagal membuat folder Drive: ${await readError(createResponse)}`);
-  }
-
-  const created = (await createResponse.json()) as { id: string };
-  localStorage.setItem(FOLDER_KEY, created.id);
-  return created.id;
+async function renameFolder(folderId: string, name: string): Promise<void> {
+  const response = await authorizedFetch(
+    `${DRIVE_API}/files/${encodeURIComponent(folderId)}?fields=id`,
+    {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name }),
+    }
+  );
+  if (!response.ok) await throwDriveError(response);
 }
 
 /**
- * Upload foto struk ke folder aplikasi dan kembalikan ID file Drive.
+ * Folder utama `KasKilat`. Folder lama `KasKilat UMKM` diubah namanya agar data
+ * pengguna versi sebelumnya tidak hilang.
  */
+export async function getOrCreateFolder(options?: { refresh?: boolean }): Promise<string> {
+  if (!getSessionEmail()) {
+    throw new GoogleAuthError('Belum login Google. Data tetap aman di perangkat ini.');
+  }
+
+  const stale = readCache('folder');
+  if (stale && !options?.refresh) {
+    if (await isFolderUsable(stale)) return stale;
+    writeCache('folder', null);
+  }
+
+  await ensureAccessToken();
+
+  const existing = await findFolder(FOLDER_NAME);
+  if (existing) {
+    writeCache('folder', existing);
+    return existing;
+  }
+
+  const legacy = await findFolder(LEGACY_FOLDER_NAME);
+  if (legacy) {
+    await renameFolder(legacy, FOLDER_NAME);
+    writeCache('folder', legacy);
+    return legacy;
+  }
+
+  const created = await createFolder(FOLDER_NAME);
+  writeCache('folder', created);
+  return created;
+}
+
+export async function getOrCreatePhotosFolder(parentFolderId?: string): Promise<string> {
+  if (!parentFolderId) {
+    const cached = readCache('photos');
+    if (cached && (await isFolderUsable(cached))) return cached;
+  }
+
+  const parentId = parentFolderId ?? (await getOrCreateFolder());
+
+  const query = encodeURIComponent(
+    `name='${PHOTOS_FOLDER_NAME}' and '${parentId}' in parents and ` +
+      `mimeType='application/vnd.google-apps.folder' and trashed=false`
+  );
+  const response = await authorizedFetch(
+    `${DRIVE_API}/files?q=${query}&fields=files(id,name)&spaces=drive&pageSize=5`
+  );
+  if (!response.ok) await throwDriveError(response);
+  const data = (await response.json()) as { files?: Array<{ id: string }> };
+  if (data.files?.[0]) {
+    writeCache('photos', data.files[0].id);
+    return data.files[0].id;
+  }
+
+  const created = await createFolder(PHOTOS_FOLDER_NAME, parentId);
+  writeCache('photos', created);
+  return created;
+}
+
+/* ------------------------------------------------------------------ */
+/* File database                                                       */
+/* ------------------------------------------------------------------ */
+
+async function findFileInFolder(folderId: string, fileName: string): Promise<string | null> {
+  const query = encodeURIComponent(
+    `name='${fileName}' and '${folderId}' in parents and trashed=false`
+  );
+  const response = await authorizedFetch(
+    `${DRIVE_API}/files?q=${query}&fields=files(id,name)&spaces=drive&pageSize=5`
+  );
+  if (!response.ok) await throwDriveError(response);
+  const data = (await response.json()) as { files?: Array<{ id: string }> };
+  return data.files?.[0]?.id ?? null;
+}
+
+/**
+ * Ambil database dari Drive. Mengembalikan null bila file belum ada.
+ */
+export async function downloadDatabaseFromDrive(): Promise<DriveDatabaseResult | null> {
+  const folderId = await getOrCreateFolder();
+
+  let fileId = readCache('database');
+  if (fileId) {
+    const check = await authorizedFetch(
+      `${DRIVE_API}/files/${encodeURIComponent(fileId)}?fields=id,trashed`
+    );
+    if (!check.ok) {
+      fileId = null;
+      writeCache('database', null);
+    } else {
+      const info = (await check.json()) as { trashed?: boolean };
+      if (info.trashed) {
+        fileId = null;
+        writeCache('database', null);
+      }
+    }
+  }
+
+  if (!fileId) {
+    fileId = await findFileInFolder(folderId, DATABASE_FILE_NAME);
+    if (fileId) writeCache('database', fileId);
+  }
+
+  if (!fileId) return null;
+
+  const response = await authorizedFetch(
+    `${DRIVE_API}/files/${encodeURIComponent(fileId)}?alt=media`,
+    { cache: 'no-store' }
+  );
+
+  if (response.status === 404) {
+    writeCache('database', null);
+    return null;
+  }
+  if (!response.ok) await throwDriveError(response);
+
+  let raw: unknown;
+  try {
+    raw = await response.json();
+  } catch {
+    throw new DriveError('File database di Drive rusak dan tidak bisa dibaca.');
+  }
+
+  const database = normalizeDatabase(raw);
+  if (!database) {
+    throw new DriveError('Format database di Drive tidak dikenali.');
+  }
+
+  return { database, fileId };
+}
+
+/**
+ * Tulis database ke Drive: update isi file yang sudah ada, atau buat baru.
+ */
+export async function uploadDatabaseToDrive(
+  database: KasKilatDatabase
+): Promise<{ fileId: string }> {
+  const folderId = await getOrCreateFolder();
+  const json = JSON.stringify(database);
+
+  let fileId = readCache('database');
+  if (!fileId) {
+    fileId = await findFileInFolder(folderId, DATABASE_FILE_NAME);
+    if (fileId) writeCache('database', fileId);
+  }
+
+  if (fileId) {
+    const response = await authorizedFetch(
+      `${DRIVE_UPLOAD_API}/files/${encodeURIComponent(fileId)}?uploadType=media&fields=id`,
+      {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json; charset=UTF-8' },
+        body: json,
+      }
+    );
+
+    if (response.status === 404) {
+      writeCache('database', null);
+    } else if (!response.ok) {
+      await throwDriveError(response);
+    } else {
+      const data = (await response.json()) as { id: string };
+      writeCache('database', data.id);
+      return { fileId: data.id };
+    }
+  }
+
+  const boundary = `kaskilat_${Math.random().toString(36).slice(2)}`;
+  const metadata = {
+    name: DATABASE_FILE_NAME,
+    mimeType: 'application/json',
+    parents: [folderId],
+    appProperties: { source: 'kaskilat-db' },
+  };
+
+  const body = new Blob(
+    [
+      `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n`,
+      JSON.stringify(metadata),
+      `\r\n--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n`,
+      json,
+      `\r\n--${boundary}--`,
+    ],
+    { type: `multipart/related; boundary=${boundary}` }
+  );
+
+  const response = await authorizedFetch(
+    `${DRIVE_UPLOAD_API}/files?uploadType=multipart&fields=id`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': `multipart/related; boundary=${boundary}` },
+      body,
+    }
+  );
+
+  if (!response.ok) await throwDriveError(response);
+
+  const created = (await response.json()) as { id: string };
+  writeCache('database', created.id);
+  return { fileId: created.id };
+}
+
+/* ------------------------------------------------------------------ */
+/* Foto                                                                */
+/* ------------------------------------------------------------------ */
+
 export async function uploadFileToDrive(
   blob: Blob,
   fileName: string
 ): Promise<{ id: string; name: string }> {
-  const folderId = await getOrCreateFolder();
+  const photosFolderId = await getOrCreatePhotosFolder();
   const mimeType = blob.type || 'image/jpeg';
   const boundary = `kaskilat_${Math.random().toString(36).slice(2)}`;
 
   const metadata = {
     name: fileName,
     mimeType,
-    parents: [folderId],
-    appProperties: { source: 'kaskilat-umkm' },
+    parents: [photosFolderId],
+    appProperties: { source: 'kaskilat-photo' },
   };
 
   const body = new Blob(
@@ -397,28 +488,14 @@ export async function uploadFileToDrive(
     }
   );
 
-  if (!response.ok) {
-    throw new Error(`Upload ke Drive gagal: ${await readError(response)}`);
-  }
-
+  if (!response.ok) await throwDriveError(response);
   const data = (await response.json()) as { id: string; name?: string };
   return { id: data.id, name: data.name || fileName };
 }
 
-export interface DriveTestResult {
-  fileId: string;
-  fileName: string;
-  folderId: string;
-  folderUrl: string;
-  fileUrl: string;
-}
-
-/**
- * Uji tuntas koneksi: pastikan folder ada lalu unggah satu file kecil.
- * Hasilnya bisa dibuka langsung untuk membuktikan file benar-benar masuk Drive.
- */
 export async function testDriveUpload(): Promise<DriveTestResult> {
   const folderId = await getOrCreateFolder({ refresh: true });
+  await getOrCreatePhotosFolder(folderId);
 
   const binary = atob(TEST_PNG_BASE64);
   const bytes = new Uint8Array(binary.length);
@@ -429,9 +506,11 @@ export async function testDriveUpload(): Promise<DriveTestResult> {
   const stamp =
     `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}` +
     `-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
-  const fileName = `tes-koneksi-${stamp}.png`;
 
-  const file = await uploadFileToDrive(new Blob([bytes], { type: 'image/png' }), fileName);
+  const file = await uploadFileToDrive(
+    new Blob([bytes], { type: 'image/png' }),
+    `tes-koneksi-${stamp}.png`
+  );
 
   return {
     fileId: file.id,
@@ -443,10 +522,10 @@ export async function testDriveUpload(): Promise<DriveTestResult> {
 }
 
 export async function fetchDriveFileBlob(fileId: string): Promise<Blob> {
-  const response = await authorizedFetch(`${DRIVE_API}/files/${encodeURIComponent(fileId)}?alt=media`);
-  if (!response.ok) {
-    throw new Error(`Gagal mengambil foto dari Drive: ${await readError(response)}`);
-  }
+  const response = await authorizedFetch(
+    `${DRIVE_API}/files/${encodeURIComponent(fileId)}?alt=media`
+  );
+  if (!response.ok) await throwDriveError(response);
   return response.blob();
 }
 
@@ -454,7 +533,5 @@ export async function deleteDriveFile(fileId: string): Promise<void> {
   const response = await authorizedFetch(`${DRIVE_API}/files/${encodeURIComponent(fileId)}`, {
     method: 'DELETE',
   });
-  if (!response.ok && response.status !== 404) {
-    throw new Error(`Gagal menghapus foto di Drive: ${await readError(response)}`);
-  }
+  if (!response.ok && response.status !== 404) await throwDriveError(response);
 }

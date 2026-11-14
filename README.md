@@ -1,81 +1,136 @@
-# KasKilat UMKM
+# KasKilat - Cashflow Tracker UMKM + Personal
 
-Aplikasi pembukuan kas masuk / kas keluar untuk UMKM dengan pembacaan foto struk otomatis.
+Catat uang masuk dan uang keluar dari **foto struk** atau **screenshot bukti transfer**. Tanpa server, tanpa database bersama: semua data dan foto tersimpan di **Google Drive kamu sendiri**.
 
-## Fitur
+## Mulai dalam 3 langkah
 
-- **OCR dua mesin**: screenshot/tangkapan layar diproses **Tesseract.js** (offline, gratis); foto kamera diproses **Gemini 3.6 Flash** (free tier) untuk akurasi nominal & tanggal yang jauh lebih baik. Model bisa diganti lewat `VITE_GEMINI_MODEL`; jika model itu tidak tersedia, aplikasi otomatis mencoba model fallback lain.
-- **Catatan otomatis**: rincian nama barang, jumlah, dan harga hasil OCR langsung mengisi kolom **Catatan Tambahan** di form verifikasi (tetap bisa diedit).
-- **Fallback otomatis**: jika Gemini tidak tersedia/gagal, OCR kembali ke Tesseract. Jika hasil Tesseract pada screenshot kurang akurat, otomatis dicoba ke Gemini (bila key tersedia).
-- **Foto struk di Google Drive**: foto dikompres (maks 1600px), diunggah ke folder `KasKilat UMKM` di Drive Anda, lalu ditampilkan lewat cache lokal. Foto tidak dibuat publik.
-- **Fallback lokal**: sebelum Drive dihubungkan, foto disimpan di IndexedDB sehingga tetap ada setelah reload (bug `blob:` URL sudah dihilangkan).
-- Dashboard saldo, grafik arus kas 30 hari, laporan, kategori, input manual, dan ekspor.
+1. **Buka aplikasinya** (atau install ke layar utama lewat tombol *Install App*).
+2. **Pilih template**: 🏪 UMKM / Usaha atau 👤 Pribadi / Personal — kategori langsung siap pakai dan bisa diubah kapan saja.
+3. **Catat transaksi**: tekan **+ Catat**, pilih 📷 Camera (struk kertas) atau 🖼️ Upload Screenshot (bukti transfer / e-wallet), lalu simpan.
 
-## Menjalankan
+Belum mau login? Pilih **Continue as Guest**. Semua fitur tetap jalan dan data disimpan di HP ini. Kapan pun bisa login untuk backup ke Drive — transaksi tamu akan ditawarkan untuk dipindahkan.
 
-Prasyarat: Node.js 20+.
+## Cara kerja penyimpanan
+
+| Data | Lokasi |
+| --- | --- |
+| Transaksi & kategori | Google Drive kamu: `KasKilat/kaskilat-database.json` (satu file JSON) |
+| Foto struk | Google Drive kamu: `KasKilat/photos/{transactionId}.jpg` |
+| Cache offline | IndexedDB di perangkat, referensi `drive://<fileId>` |
+| Belum login / foto gagal unggah | IndexedDB perangkat, referensi `local://<id>` |
+
+- Setiap perubahan langsung masuk IndexedDB, lalu disinkronkan ke Drive ~3 detik kemudian.
+- Jika sync gagal, data tetap aman di HP dan muncul toast *"Gagal sync ke Drive, data aman di HP ini"*.
+- Konflik diselesaikan dengan **last-write-wins** (yang terakhir menulis menang), tanpa dialog merge.
+- Foto struk **tidak pernah** masuk Galeri atau Google Photos. Di web tidak ada unduhan otomatis; di Capacitor dipakai `Camera.getPhoto({ saveToGallery: false })`.
+- Aplikasi tidak punya backend dan tidak punya akses ke isi Drive kamu — developer tidak bisa melihat data keuanganmu.
+
+## OCR
+
+Dua mesin, dipilih berdasarkan jenis gambar:
+
+- **Screenshot / bukti transfer** → Tesseract.js (offline, gratis). Jika hasilnya kurang yakin dan ada Gemini key, otomatis dinaikkan ke Gemini.
+- **Foto kamera struk kertas** → Gemini Vision (butuh API key milikmu). Jika gagal, otomatis turun ke Tesseract.
+
+Hasil OCR mengisi form verifikasi yang tetap bisa diedit, dan kategori ditebak dengan aturan teks biasa (GoPay/OVO/DANA/ShopeePay/QRIS, BCA/BRI/Mandiri, Shopee/Tokopedia, Grab/Gojek) — tanpa AI.
+
+Gemini API key disimpan **hanya** di `localStorage` perangkat (`kaskilat_gemini_api_key`) dan dikirim langsung ke Google. Key tidak pernah masuk database Drive, tidak dikirim ke server kami, dan tidak dipakai bersama pengguna lain.
+
+Tanpa key, aplikasi tetap bisa dipakai penuh dengan Tesseract (mode offline).
+
+---
+
+## Developer
+
+### Prasyarat
+
+- Node.js 20+
+- Akun Google Cloud (sekali setup)
+
+### Setup lokal
 
 ```bash
 npm install
 npm run dev
 ```
 
-Buka `http://localhost:3000`.
+### 1. Google OAuth Client ID (sekali saja)
 
-## Konfigurasi
+Client ID milik developer, **bukan** input dari pengguna. Pengguna hanya melihat tombol *Login with Google*.
 
-Semua kredensial bisa diisi langsung dari aplikasi melalui tombol **Pengaturan** di header — tanpa rebuild. Nilai environment variable hanya menjadi default.
+1. Buka [Google Cloud Console](https://console.cloud.google.com/) → buat/pilih project.
+2. **APIs & Services → Library** → aktifkan **Google Drive API**.
+3. **OAuth consent screen**: tipe External, isi nama aplikasi. Selama masih *Testing*, tambahkan email kamu (dan email tester lain) di **Test users**.
+4. **Credentials → Create credentials → OAuth client ID → Web application**.
+5. **Authorized JavaScript origins**:
+   - `http://localhost:5173` (dev Vite)
+   - domain produksi, mis. `https://kaskilat.vercel.app`
+6. **Authorized redirect URIs**: tidak perlu (memakai Google Identity Services token flow di browser).
+7. Salin Client ID (`xxxxx.apps.googleusercontent.com`).
 
-### 1. Gemini API key (gratis)
+#### Pasang di Vercel
 
-1. Buka https://aistudio.google.com/apikey lalu buat API key.
-2. Di aplikasi: **Pengaturan → Gemini API Key** → tempel key → **Simpan**.
+Project → **Settings → Environment Variables**:
 
-Tanpa key, semua gambar tetap bisa diproses Tesseract offline (akurasi lebih rendah untuk foto kamera).
+```
+VITE_GOOGLE_CLIENT_ID=xxxxx.apps.googleusercontent.com
+VITE_GEMINI_API_KEY=            # opsional, key pribadi developer sebagai fallback
+VITE_GEMINI_MODEL=gemini-3-flash-preview
+```
 
-### 2. Google Drive untuk foto struk
+Redeploy setelah menambah variabel (Vite menanam nilai `VITE_*` saat build).
 
-1. Buka https://console.cloud.google.com/ dan buat/pilih project.
-2. Aktifkan **Google Drive API** (APIs & Services → Library).
-3. Buat **OAuth consent screen** (tipe External, cukup untuk penggunaan pribadi; tambahkan akun Anda sebagai test user bila masih mode Testing).
-4. Buat **Credentials → OAuth client ID → Web application**.
-5. Di **Authorized JavaScript origins**, tambahkan origin aplikasi, misalnya:
-   - `http://localhost:3000`
-   - domain produksi Anda (mis. `https://kas-kilat.example.com`)
-6. Salin **Client ID** (`xxxxx.apps.googleusercontent.com`).
-7. Di aplikasi: **Pengaturan → Google OAuth Client ID** → tempel → **Simpan**, lalu klik **Hubungkan Google Drive** dan setujui izin.
+**Tidak ada Supabase.** Tidak ada tabel, RLS, SQL, atau koneksi database ke server mana pun. Satu-satunya database adalah file JSON di Drive pengguna.
 
-Aplikasi memakai scope `drive.file`, artinya hanya bisa melihat/mengubah file dan folder yang dibuatnya sendiri. Foto **tidak** dibuat dapat diakses publik; aplikasi mengambilnya kembali dengan token OAuth dan menyimpannya sebagai cache di perangkat.
-
-Jika foto tidak terlihat di Drive: buka **Pengaturan → Tes unggah ke Drive**. Tombol ini membuat folder `KasKilat UMKM` (bila belum ada), mengunggah satu file uji, menampilkan error persisnya bila gagal, dan menyediakan tautan folder. Foto yang tersimpan **sebelum** Drive dihubungkan tetap berada di IndexedDB; gunakan **Unggah N foto lokal ke Drive** untuk memindahkannya.
-
-### 3. Environment variable (opsional)
-
-Salin `.env.example` menjadi `.env.local` lalu isi:
+### File `.env.example`
 
 ```env
-VITE_GEMINI_API_KEY=
 VITE_GOOGLE_CLIENT_ID=
+VITE_GEMINI_API_KEY= # optional, developer personal only
+VITE_GEMINI_MODEL=gemini-3-flash-preview
 ```
 
-## Penyimpanan data
-
-| Data | Lokasi |
-| --- | --- |
-| Transaksi & kategori | localStorage (atau Supabase bila dikonfigurasi) |
-| Foto struk (Drive terhubung) | Google Drive folder `KasKilat UMKM`, referensi `drive://<fileId>` |
-| Foto struk (Drive belum terhubung/gagal) | IndexedDB browser, referensi `local://<id>` |
-
-Catatan: referensi `local://` bersifat per-perangkat. Jika memakai Supabase lintas perangkat, hubungkan Google Drive agar referensi foto portabel. Supabase dan Google Drive saling independen — foto struk tetap bisa masuk Drive tanpa Supabase, dan sebaliknya.
-
-## Build
+### Script
 
 ```bash
-npm run build
-npm run preview
+npm run dev      # server pengembangan
+npm run build    # build produksi + service worker PWA
+npm run preview  # pratinjau hasil build
+npm run lint     # tsc --noEmit
+npm run icons    # regenerate ikon PWA di public/icons
 ```
 
-## Keamanan
+### Struktur singkat
 
-- **Client ID OAuth** aman berada di browser.
-- **Gemini API key** yang ditempel di aplikasi tersimpan di localStorage dan dikirim langsung ke Google. Ini cocok untuk penggunaan pribadi/UMKM di perangkat sendiri. Untuk aplikasi publik multi-pengguna, pindahkan pemanggilan Gemini ke backend/proxy agar key tidak terekspos.
+```
+src/
+  features/auth/        # Google Identity Services, onboarding, settings, guest upgrade
+  features/database/    # store pusat (useSyncExternalStore), IndexedDB, snapshot
+  features/storage/     # Drive API v3 (DB + foto) dan cache lokal
+  features/ocr/         # routing Tesseract/Gemini, uploader, form verifikasi
+  features/transactions # daftar, modal input, detail
+  lib/                  # template kategori, toast, kamera, kompresi gambar, utils
+```
+
+### Scope OAuth
+
+`https://www.googleapis.com/auth/drive.file` + `userinfo.email` + `userinfo.profile`.
+
+`drive.file` hanya memberi akses ke file/folder yang dibuat aplikasi ini sendiri, sehingga foto struk pengguna tidak dapat dibaca oleh aplikasi lain dan tidak bisa dijadikan publik.
+
+### PWA & offline
+
+- Service worker (Workbox `generateSW`) meng-cache app shell dan aset statis.
+- **`kaskilat-database.json` dikecualikan** dari cache (`NetworkOnly`), begitu juga endpoint `googleapis.com` dan `accounts.google.com`, supaya data tidak pernah basi atau bocor lewat cache.
+- Manifest: nama KasKilat, `display: standalone`, theme `#059669`, ikon 192/512 + maskable.
+
+### Catatan migrasi
+
+Skema Supabase lama disimpan sebagai arsip di [`docs/old-supabase-migration.sql`](docs/old-supabase-migration.sql) — **Deprecated, sekarang memakai Google Drive sebagai database**. Jangan dijalankan.
+
+## Privasi
+
+- Data keuangan dan foto struk tersimpan di akun Google Drive milik pengguna sendiri.
+- Developer tidak memiliki akses ke isi Drive pengguna dan tidak menjalankan server penyimpanan.
+- Gemini key milik pengguna hanya ada di perangkatnya.
+- Tidak ada analytics, tidak ada pelacakan, tidak ada iklan.

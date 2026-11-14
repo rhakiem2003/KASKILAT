@@ -1,11 +1,12 @@
 /**
  * @file App.tsx
- * @description Root Application KasKilat UMKM - Pembukuan Kas In / Kas Out dengan OCR Otomatis.
+ * @description Root KasKilat — onboarding tamu/akun, dashboard, transaksi, laporan, OCR, dan sync Drive.
  */
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { AppHeader } from './components/layout/AppHeader';
 import { BottomNavigation } from './components/layout/BottomNavigation';
+import { ToastHost } from './components/ui/ToastHost';
 import { BalanceSummaryCard } from './features/dashboard/components/BalanceSummaryCard';
 import { CashflowChart30Days } from './features/dashboard/components/CashflowChart30Days';
 import { RecentTransactionsList } from './features/dashboard/components/RecentTransactionsList';
@@ -13,55 +14,64 @@ import { TransactionListView } from './features/transactions/components/Transact
 import { ReportView } from './features/reports/components/ReportView';
 import { ScanReceiptModal } from './features/ocr/components/ScanReceiptModal';
 import { ManualTransactionModal } from './features/transactions/components/ManualTransactionModal';
+import { AddTransactionModal } from './features/transactions/components/AddTransactionModal';
 import { TransactionDetailModal } from './features/transactions/components/TransactionDetailModal';
 import { CategoryListModal } from './features/categories/components/CategoryListModal';
-import { BackendSettingsModal } from './features/auth/components/BackendSettingsModal';
+import { SettingsModal } from './features/auth/components/SettingsModal';
+import { OnboardingScreen } from './features/auth/components/OnboardingScreen';
+import { GuestWarningModal } from './features/auth/components/GuestWarningModal';
+import { GuestUpgradeModal } from './features/auth/components/GuestUpgradeModal';
 import { PhotoLightboxModal } from './features/transactions/components/PhotoLightboxModal';
 import { useTransactions } from './features/transactions/hooks/useTransactions';
 import { useCategories } from './features/categories/hooks/useCategories';
 import { useCreateTransaction } from './features/transactions/hooks/useCreateTransaction';
+import { useAppDatabase } from './features/database/hooks/useAppDatabase';
+import {
+  initializeApp,
+  markGuestWarningShown,
+  shouldShowGuestWarning,
+} from './features/database/services/database-store';
 import { Transaction, CreateTransactionInput } from './features/transactions/types/transaction.type';
 import { deleteReceiptPhoto } from './features/storage/services/photo.service';
 import { APP_CONFIG } from './lib/constants';
+import { Loader2 } from 'lucide-react';
 
 export default function App() {
+  const { status, mode, database, pendingUpgrade } = useAppDatabase();
   const [activeTab, setActiveTab] = useState<'dashboard' | 'transactions' | 'reports'>('dashboard');
 
-  // Modals state
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isScanModalOpen, setIsScanModalOpen] = useState(false);
   const [isManualModalOpen, setIsManualModalOpen] = useState(false);
   const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
-  const [isBackendModalOpen, setIsBackendModalOpen] = useState(false);
+  const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
+  const [isGuestWarningOpen, setIsGuestWarningOpen] = useState(false);
   const [selectedTransaction, setSelectedTransaction] = useState<Transaction | null>(null);
   const [lightboxPhotoUrl, setLightboxPhotoUrl] = useState<string | null>(null);
 
-  // Business hooks
-  const {
-    transactions,
-    summary,
-    refreshTransactions,
-    deleteTransaction,
-  } = useTransactions();
-
-  const {
-    categories,
-    addCategory,
-    removeCategory,
-    refreshCategories,
-  } = useCategories();
-
+  const { transactions, summary, deleteTransaction } = useTransactions();
+  const { categories, addCategory, removeCategory } = useCategories();
   const { saveTransaction } = useCreateTransaction();
 
-  // Handlers
+  useEffect(() => {
+    void initializeApp();
+  }, []);
+
+  const maybeWarnGuest = () => {
+    if (mode === 'guest' && shouldShowGuestWarning()) {
+      setIsGuestWarningOpen(true);
+    }
+  };
+
   const handleSaveFromScan = async (input: CreateTransactionInput) => {
     await saveTransaction(input);
-    await refreshTransactions();
+    maybeWarnGuest();
   };
 
   const handleSaveFromManual = async (input: CreateTransactionInput) => {
     await saveTransaction(input);
-    await refreshTransactions();
     setIsManualModalOpen(false);
+    maybeWarnGuest();
   };
 
   const handleDeleteTransaction = async (id: string) => {
@@ -73,44 +83,48 @@ export default function App() {
     setSelectedTransaction(null);
   };
 
-  const handleResetData = () => {
-    localStorage.removeItem(APP_CONFIG.STORAGE_KEYS.TRANSACTIONS);
-    localStorage.removeItem(APP_CONFIG.STORAGE_KEYS.CATEGORIES);
-    refreshTransactions();
-    refreshCategories();
-  };
+  if (status === 'loading') {
+    return (
+      <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex flex-col items-center justify-center gap-3 text-slate-500">
+        <div className="w-12 h-12 rounded-2xl bg-emerald-600 text-white flex items-center justify-center text-xl font-extrabold">
+          K
+        </div>
+        <div className="flex items-center gap-2 text-xs">
+          <Loader2 className="w-4 h-4 animate-spin" />
+          Menyiapkan {APP_CONFIG.NAME}...
+        </div>
+      </div>
+    );
+  }
+
+  if (status === 'onboarding' || !database) {
+    return <OnboardingScreen />;
+  }
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex flex-col font-sans">
-      {/* Header Aplikasi (Desktop & Mobile) */}
       <AppHeader
         activeTab={activeTab}
         onTabChange={setActiveTab}
-        onScanClick={() => setIsScanModalOpen(true)}
+        onAddClick={() => setIsAddModalOpen(true)}
         onOpenCategories={() => setIsCategoryModalOpen(true)}
-        onOpenBackendSettings={() => setIsBackendModalOpen(true)}
+        onOpenSettings={() => setIsSettingsModalOpen(true)}
       />
 
-      {/* Konten Utama Responsif */}
       <main className="flex-1 max-w-6xl w-full mx-auto px-4 sm:px-6 py-5 pb-24 md:pb-12">
         {activeTab === 'dashboard' && (
           <div className="space-y-6">
-            {/* Kartu Ringkasan Saldo & Arus Kas */}
             <BalanceSummaryCard
               summary={summary}
-              onScanClick={() => setIsScanModalOpen(true)}
+              onScanClick={() => setIsAddModalOpen(true)}
             />
-
-            {/* Grafik Arus Kas 30 Hari Terakhir */}
             <CashflowChart30Days transactions={transactions} />
-
-            {/* 5 Transaksi Terakhir */}
             <RecentTransactionsList
               transactions={transactions}
               categories={categories}
               onViewAll={() => setActiveTab('transactions')}
               onSelectTransaction={setSelectedTransaction}
-              onScanClick={() => setIsScanModalOpen(true)}
+              onScanClick={() => setIsAddModalOpen(true)}
               onPhotoClick={setLightboxPhotoUrl}
             />
           </div>
@@ -121,28 +135,40 @@ export default function App() {
             transactions={transactions}
             categories={categories}
             onSelectTransaction={setSelectedTransaction}
-            onScanClick={() => setIsScanModalOpen(true)}
+            onScanClick={() => setIsAddModalOpen(true)}
             onPhotoClick={setLightboxPhotoUrl}
           />
         )}
 
         {activeTab === 'reports' && (
-          <ReportView
-            transactions={transactions}
-            categories={categories}
-          />
+          <ReportView transactions={transactions} categories={categories} />
         )}
       </main>
 
-      {/* Navigasi Bawah Mobile (Thumb-zone) */}
       <BottomNavigation
         activeTab={activeTab}
         onTabChange={setActiveTab}
-        onScanClick={() => setIsScanModalOpen(true)}
+        onAddClick={() => setIsAddModalOpen(true)}
         onOpenCategories={() => setIsCategoryModalOpen(true)}
       />
 
-      {/* Modal Alur OCR Foto Struk */}
+      <AddTransactionModal
+        isOpen={isAddModalOpen}
+        onClose={() => setIsAddModalOpen(false)}
+        onCamera={() => {
+          setIsAddModalOpen(false);
+          setIsScanModalOpen(true);
+        }}
+        onScreenshot={() => {
+          setIsAddModalOpen(false);
+          setIsScanModalOpen(true);
+        }}
+        onManual={() => {
+          setIsAddModalOpen(false);
+          setIsManualModalOpen(true);
+        }}
+      />
+
       <ScanReceiptModal
         isOpen={isScanModalOpen}
         onClose={() => setIsScanModalOpen(false)}
@@ -150,11 +176,10 @@ export default function App() {
         onTransactionSaved={handleSaveFromScan}
         onOpenSettings={() => {
           setIsScanModalOpen(false);
-          setIsBackendModalOpen(true);
+          setIsSettingsModalOpen(true);
         }}
       />
 
-      {/* Modal Input Transaksi Manual */}
       <ManualTransactionModal
         isOpen={isManualModalOpen}
         onClose={() => setIsManualModalOpen(false)}
@@ -162,7 +187,6 @@ export default function App() {
         onSave={handleSaveFromManual}
       />
 
-      {/* Modal Detail Transaksi & Hapus */}
       <TransactionDetailModal
         isOpen={Boolean(selectedTransaction)}
         onClose={() => setSelectedTransaction(null)}
@@ -171,7 +195,6 @@ export default function App() {
         onDelete={handleDeleteTransaction}
       />
 
-      {/* Modal Kelola Kategori */}
       <CategoryListModal
         isOpen={isCategoryModalOpen}
         onClose={() => setIsCategoryModalOpen(false)}
@@ -180,18 +203,27 @@ export default function App() {
         onDeleteCategory={removeCategory}
       />
 
-      {/* Modal Status Backend & Database */}
-      <BackendSettingsModal
-        isOpen={isBackendModalOpen}
-        onClose={() => setIsBackendModalOpen(false)}
-        onResetData={handleResetData}
+      <SettingsModal
+        isOpen={isSettingsModalOpen}
+        onClose={() => setIsSettingsModalOpen(false)}
       />
 
-      {/* Modal Pembesar Foto Struk Fullscreen */}
+      <GuestWarningModal
+        isOpen={isGuestWarningOpen}
+        onClose={() => {
+          markGuestWarningShown();
+          setIsGuestWarningOpen(false);
+        }}
+      />
+
+      {pendingUpgrade && <GuestUpgradeModal request={pendingUpgrade} />}
+
       <PhotoLightboxModal
         photoUrl={lightboxPhotoUrl}
         onClose={() => setLightboxPhotoUrl(null)}
       />
+
+      <ToastHost />
     </div>
   );
 }

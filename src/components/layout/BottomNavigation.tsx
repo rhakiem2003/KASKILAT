@@ -9,14 +9,14 @@ import { LayoutDashboard, ReceiptText, BarChart3, Tag, Plus } from 'lucide-react
 interface BottomNavigationProps {
   activeTab: 'dashboard' | 'transactions' | 'reports';
   onTabChange: (tab: 'dashboard' | 'transactions' | 'reports') => void;
-  onScanClick: () => void;
+  onAddClick: () => void;
   onOpenCategories: () => void;
 }
 
 export const BottomNavigation: React.FC<BottomNavigationProps> = ({
   activeTab,
   onTabChange,
-  onScanClick,
+  onAddClick,
   onOpenCategories,
 }) => {
   return (
@@ -57,8 +57,8 @@ export const BottomNavigation: React.FC<BottomNavigationProps> = ({
         <div className="flex items-center justify-center">
           <button
             type="button"
-            onClick={onScanClick}
-            aria-label="Foto Struk Baru"
+            onClick={onAddClick}
+            aria-label="Tambah Transaksi"
             className="w-12 h-12 -mt-4 rounded-full bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg shadow-emerald-600/30 flex items-center justify-center active:scale-95 transition-transform"
           >
             <Plus className="w-6 h-6 stroke-[2.5]" />

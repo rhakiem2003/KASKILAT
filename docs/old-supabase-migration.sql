@@ -1,3 +1,7 @@
+-- Deprecated - now using GDrive as DB
+-- Arsip skema Supabase versi lama. Aplikasi KasKilat tidak lagi memakai Supabase, backend, atau tabel/RPC apa pun.
+-- Database utama sekarang: file kaskilat-database.json di Google Drive milik pengguna.
+
 -- ==============================================================================
 -- Migrasi Database KasKilat UMKM (Supabase / PostgreSQL)
 -- Fitur: Kas In / Kas Out, Kategori, OCR Metadata, RLS Multi-user

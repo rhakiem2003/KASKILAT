@@ -45,3 +45,19 @@ export function getCurrentISODate(): string {
   const day = String(now.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
 }
+
+/**
+ * Format waktu sync untuk header, mis. "14 Nov 2026, 10:00".
+ */
+export function formatSyncTimestamp(isoString?: string | null): string {
+  if (!isoString) return '';
+  const date = new Date(isoString);
+  if (Number.isNaN(date.getTime())) return '';
+
+  const day = date.getDate();
+  const month = SHORT_MONTH_NAMES_ID[date.getMonth()] || '';
+  const year = date.getFullYear();
+  const hour = String(date.getHours()).padStart(2, '0');
+  const minute = String(date.getMinutes()).padStart(2, '0');
+  return `${day} ${month} ${year}, ${hour}:${minute}`;
+}

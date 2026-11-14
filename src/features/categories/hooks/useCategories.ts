@@ -1,58 +1,34 @@
 /**
  * @file useCategories.ts
- * @description Hook React untuk membaca dan menambah kategori UMKM.
+ * @description Hook React untuk kategori dari database-store (selalu sinkron dengan UI).
  */
 
-import { useState, useEffect, useCallback } from 'react';
-import { Category, CreateCategoryInput } from '../types/category.type';
-import { getCategories, createCategory, deleteCategory } from '../services/category.service';
+import { useMemo } from 'react';
+import type { Category, CreateCategoryInput } from '../types/category.type';
+import { useAppDatabase } from '../../database/hooks/useAppDatabase';
+import {
+  addCategory,
+  deleteCategory,
+} from '../../database/services/database-store';
 
 export function useCategories() {
-  const [categories, setCategories] = useState<Category[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const { database, status } = useAppDatabase();
 
-  const loadCategories = useCallback(async () => {
-    setIsLoading(true);
-    setError(null);
-    try {
-      const data = await getCategories();
-      setCategories(data);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Gagal memuat kategori.');
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
+  const categories = useMemo<Category[]>(() => {
+    if (!database) return [];
+    return [...database.categories].sort((a, b) => a.name.localeCompare(b.name));
+  }, [database]);
 
-  useEffect(() => {
-    loadCategories();
-  }, [loadCategories]);
-
-  const handleAddCategory = async (input: CreateCategoryInput) => {
-    try {
-      const newCat = await createCategory(input);
-      setCategories((prev) => [...prev, newCat]);
-      return newCat;
-    } catch (err) {
-      throw err;
-    }
-  };
-
+  const handleAddCategory = async (input: CreateCategoryInput) => addCategory(input);
   const handleDeleteCategory = async (id: string) => {
-    try {
-      await deleteCategory(id);
-      setCategories((prev) => prev.filter((c) => c.id !== id));
-    } catch (err) {
-      throw err;
-    }
+    await deleteCategory(id);
   };
 
   return {
     categories,
-    isLoading,
-    error,
-    refreshCategories: loadCategories,
+    isLoading: status === 'loading',
+    error: null,
+    refreshCategories: () => undefined,
     addCategory: handleAddCategory,
     removeCategory: handleDeleteCategory,
   };
