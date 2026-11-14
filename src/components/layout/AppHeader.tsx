@@ -16,6 +16,7 @@ import {
   Tag,
 } from 'lucide-react';
 import { Button } from '../ui/Button';
+import { KasKilatMark, KasKilatWordmark } from '../brand/KasKilatLogo';
 import { useAppDatabase } from '../../features/database/hooks/useAppDatabase';
 import { useInstallPrompt } from '../../lib/hooks/useInstallPrompt';
 import { formatSyncTimestamp } from '../../features/transactions/utils/dateFormatter';
@@ -83,13 +84,9 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
       <div className="max-w-6xl mx-auto px-3 sm:px-6 h-16 flex items-center justify-between gap-3 sm:gap-8">
         {/* Brand */}
         <div className="flex items-center gap-2.5 shrink-0">
-          <div className="w-9 h-9 rounded-xl bg-emerald-600 text-white flex items-center justify-center font-bold text-lg shadow-sm shadow-emerald-600/30">
-            K
-          </div>
+          <KasKilatMark className="w-9 h-9 shrink-0 drop-shadow-[0_2px_4px_rgba(5,150,105,0.3)]" />
           <div className="flex flex-col min-w-0">
-            <span className="text-base font-extrabold tracking-tight text-slate-900 dark:text-slate-100 whitespace-nowrap">
-              KasKilat
-            </span>
+            <KasKilatWordmark className="whitespace-nowrap" />
             {isGuest ? (
               <span className="text-[10px] text-slate-400 font-medium -mt-1 hidden sm:inline">
                 UMKM + Personal

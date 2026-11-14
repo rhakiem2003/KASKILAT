@@ -8,13 +8,27 @@ import { deflateSync } from 'node:zlib';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import {
+  BOLT_POINTS,
+  BOLT_STROKE,
+  TILE_FROM,
+  TILE_RADIUS,
+  TILE_TO,
+  VIEW_BOX,
+} from '../src/components/brand/logo-geometry.ts';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const OUT_DIR = join(ROOT, 'public', 'icons');
 const PUBLIC_DIR = join(ROOT, 'public');
 
-const EMERALD = [5, 150, 105];
 const WHITE = [255, 255, 255];
+
+function hexToRgb(hex) {
+  return [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
+}
+
+const TILE_FROM_RGB = hexToRgb(TILE_FROM);
+const TILE_TO_RGB = hexToRgb(TILE_TO);
 
 /* ---------------------------- PNG encoder ---------------------------- */
 
@@ -96,18 +110,39 @@ function distanceToSegment(px, py, ax, ay, bx, by) {
   return Math.hypot(px - (ax + t * dx), py - (ay + t * dy));
 }
 
-const K_SEGMENTS = [
-  [0.36, 0.235, 0.36, 0.765],
-  [0.405, 0.505, 0.655, 0.245],
-  [0.405, 0.505, 0.655, 0.755],
-];
+function insidePolygon(x, y, points) {
+  let inside = false;
+  for (let i = 0, j = points.length - 1; i < points.length; j = i, i += 1) {
+    const [xi, yi] = points[i];
+    const [xj, yj] = points[j];
+    const crossesRow = yi > y !== yj > y;
+    if (crossesRow && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside;
+  }
+  return inside;
+}
+
+function distanceToPolygon(x, y, points) {
+  let min = Infinity;
+  for (let i = 0; i < points.length; i += 1) {
+    const [ax, ay] = points[i];
+    const [bx, by] = points[(i + 1) % points.length];
+    min = Math.min(min, distanceToSegment(x, y, ax, ay, bx, by));
+  }
+  return min;
+}
+
+/** Gradasi diagonal tile, sama dengan linearGradient di komponen SVG. */
+function tileColor(nx, ny) {
+  const t = Math.max(0, Math.min(1, (nx + ny) / 2));
+  return TILE_FROM_RGB.map((from, i) => Math.round(from + (TILE_TO_RGB[i] - from) * t));
+}
 
 function renderIcon(size, { maskable = false } = {}) {
   const supersample = 2;
   const hi = size * supersample;
   const pixels = Buffer.alloc(hi * hi * 4);
-  const radius = maskable ? 0 : size * 0.22;
-  const stroke = 0.078;
+  const radius = maskable ? 0 : (size * TILE_RADIUS) / VIEW_BOX;
+  const boltStroke = BOLT_STROKE / 2;
 
   for (let y = 0; y < hi; y += 1) {
     for (let x = 0; x < hi; x += 1) {
@@ -121,19 +156,18 @@ function renderIcon(size, { maskable = false } = {}) {
       let alpha = 0;
 
       if (insideRoundedRect(px, py, size, radius)) {
-        color = EMERALD;
+        color = tileColor(nx, ny);
         alpha = 255;
       }
 
       if (color) {
         const scale = maskable ? 0.82 : 1;
         const offset = (1 - scale) / 2;
-        const kx = (nx - offset) / scale;
-        const ky = (ny - offset) / scale;
-        const onStroke = K_SEGMENTS.some(
-          ([ax, ay, bx, by]) => distanceToSegment(kx, ky, ax, ay, bx, by) <= stroke / 2
-        );
-        if (onStroke) color = WHITE;
+        const bx = ((nx - offset) / scale) * VIEW_BOX;
+        const by = ((ny - offset) / scale) * VIEW_BOX;
+        if (insidePolygon(bx, by, BOLT_POINTS) || distanceToPolygon(bx, by, BOLT_POINTS) <= boltStroke) {
+          color = WHITE;
+        }
       }
 
       if (color) {
@@ -191,9 +225,17 @@ for (const [name, size, options] of outputs) {
 
 writeFileSync(join(OUT_DIR, 'apple-touch-icon.png'), renderIcon(180));
 
-const favicon = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-  <rect width="64" height="64" rx="14" fill="#059669"/>
-  <path d="M23 15v34M26 32l17-17M26 32l17 17" fill="none" stroke="#ffffff" stroke-width="6" stroke-linecap="round"/>
+const boltPoints = BOLT_POINTS.map(([x, y]) => `${x},${y}`).join(' ');
+
+const favicon = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${VIEW_BOX} ${VIEW_BOX}">
+  <defs>
+    <linearGradient id="tile" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="${TILE_FROM}"/>
+      <stop offset="1" stop-color="${TILE_TO}"/>
+    </linearGradient>
+  </defs>
+  <rect width="${VIEW_BOX}" height="${VIEW_BOX}" rx="${TILE_RADIUS}" fill="url(#tile)"/>
+  <polygon points="${boltPoints}" fill="#ffffff" stroke="#ffffff" stroke-width="${BOLT_STROKE}" stroke-linejoin="round"/>
 </svg>
 `;
 writeFileSync(join(PUBLIC_DIR, 'favicon.svg'), favicon);

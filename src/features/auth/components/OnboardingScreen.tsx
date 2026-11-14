@@ -6,6 +6,7 @@
 import React, { useState } from 'react';
 import { ArrowRight, Cloud, Loader2, ShieldCheck, Smartphone } from 'lucide-react';
 import { Button } from '../../../components/ui/Button';
+import { KasKilatMark, KasKilatWordmark } from '../../../components/brand/KasKilatLogo';
 import { TEMPLATE_LABELS, TemplateType } from '../../../lib/templates';
 import { startAsGuest, startWithGoogle } from '../../database/services/database-store';
 import { isGoogleConfigured } from '../services/auth.service';
@@ -51,11 +52,12 @@ export const OnboardingScreen: React.FC = () => {
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex items-center justify-center px-4 py-8">
       <div className="w-full max-w-md space-y-6">
         <div className="text-center space-y-1.5">
-          <div className="w-14 h-14 mx-auto rounded-2xl bg-emerald-600 text-white flex items-center justify-center text-2xl font-extrabold shadow-lg shadow-emerald-600/25">
-            K
-          </div>
-          <h1 className="text-2xl font-extrabold text-slate-900 dark:text-slate-100">
-            KasKilat
+          <KasKilatMark
+            className="w-14 h-14 mx-auto drop-shadow-[0_8px_16px_rgba(5,150,105,0.28)]"
+            label="KasKilat"
+          />
+          <h1 className="text-2xl">
+            <KasKilatWordmark size="lg" />
           </h1>
           <p className="text-xs text-slate-500 dark:text-slate-400">
             Cashflow Tracker UMKM + Personal

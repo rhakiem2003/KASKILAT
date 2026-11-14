@@ -17,6 +17,7 @@ import {
   ShieldCheck,
   Smartphone,
 } from 'lucide-react';
+import { KasKilatMark, KasKilatWordmark } from '../../../components/brand/KasKilatLogo';
 
 const GITHUB_URL = 'https://github.com/rhakiem2003/KASKILAT';
 const UPDATED_AT = '14 November 2026';
@@ -36,12 +37,8 @@ const Shell: React.FC<{
     <header className="border-b border-slate-200/80 bg-white/90 dark:border-slate-800 dark:bg-slate-900/90">
       <div className="max-w-3xl mx-auto px-5 h-16 flex items-center justify-between gap-4">
         <a href="/" className="flex items-center gap-2.5 min-w-0">
-          <span className="w-9 h-9 rounded-xl bg-emerald-600 text-white flex items-center justify-center font-bold text-lg">
-            K
-          </span>
-          <span className="text-base font-extrabold tracking-tight text-slate-900 dark:text-slate-100">
-            KasKilat
-          </span>
+          <KasKilatMark className="w-9 h-9 shrink-0" />
+          <KasKilatWordmark className="whitespace-nowrap" />
         </a>
         <a
           href="/"

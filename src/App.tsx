@@ -5,6 +5,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { AppHeader } from './components/layout/AppHeader';
+import { KasKilatMark } from './components/brand/KasKilatLogo';
 import { BottomNavigation } from './components/layout/BottomNavigation';
 import { ToastHost } from './components/ui/ToastHost';
 import { BalanceSummaryCard } from './features/dashboard/components/BalanceSummaryCard';
@@ -86,9 +87,10 @@ export default function App() {
   if (status === 'loading') {
     return (
       <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex flex-col items-center justify-center gap-3 text-slate-500">
-        <div className="w-12 h-12 rounded-2xl bg-emerald-600 text-white flex items-center justify-center text-xl font-extrabold">
-          K
-        </div>
+        <KasKilatMark
+          className="w-12 h-12 drop-shadow-[0_6px_14px_rgba(5,150,105,0.3)]"
+          label="KasKilat"
+        />
         <div className="flex items-center gap-2 text-xs">
           <Loader2 className="w-4 h-4 animate-spin" />
           Menyiapkan {APP_CONFIG.NAME}...
