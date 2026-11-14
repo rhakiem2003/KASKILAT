@@ -33,6 +33,10 @@ function getNativeCamera(): NativeCameraPlugin | null {
   return bridge.Plugins?.Camera ?? null;
 }
 
+export function isNativeCameraAvailable(): boolean {
+  return Boolean(getNativeCamera());
+}
+
 /**
  * Di web selalu 'unavailable' sehingga pemanggil memakai input capture=environment.
  */

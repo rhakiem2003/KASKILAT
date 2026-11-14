@@ -20,7 +20,7 @@ import { KasKilatMark, KasKilatWordmark } from '../brand/KasKilatLogo';
 import { useAppDatabase } from '../../features/database/hooks/useAppDatabase';
 import { useInstallPrompt } from '../../lib/hooks/useInstallPrompt';
 import { formatSyncTimestamp } from '../../features/transactions/utils/dateFormatter';
-import { logout } from '../../features/database/services/database-store';
+import { logout, startWithGoogle } from '../../features/database/services/database-store';
 import { showToast } from '../../lib/toast';
 
 interface AppHeaderProps {
@@ -41,8 +41,24 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
   const { mode, email, sync } = useAppDatabase();
   const { canInstall, install } = useInstallPrompt();
   const [logoutBusy, setLogoutBusy] = useState(false);
+  const [loginBusy, setLoginBusy] = useState(false);
 
   const isGuest = mode === 'guest';
+
+  const handleBackupLogin = async () => {
+    if (loginBusy) return;
+    setLoginBusy(true);
+    try {
+      await startWithGoogle();
+    } catch (error) {
+      showToast(
+        error instanceof Error ? error.message : 'Login Google dibatalkan.',
+        'error'
+      );
+    } finally {
+      setLoginBusy(false);
+    }
+  };
 
   const handleLogout = async () => {
     if (!window.confirm('Keluar dari Google? Data di Drive tetap aman dan tidak dihapus.')) return;
@@ -60,7 +76,9 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
   };
 
   const syncText = isGuest
-    ? 'Login to Backup'
+    ? loginBusy
+      ? 'Menghubungkan...'
+      : 'Login to Backup'
     : sync.phase === 'saving' || sync.phase === 'syncing'
       ? 'Menyimpan...'
       : sync.phase === 'synced'
@@ -72,7 +90,9 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
           : 'Tersimpan lokal';
 
   const SyncIcon = isGuest
-    ? Smartphone
+    ? loginBusy
+      ? Loader2
+      : Smartphone
     : sync.phase === 'offline'
       ? CloudOff
       : sync.phase === 'saving' || sync.phase === 'syncing'
@@ -128,9 +148,10 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
         <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
           <button
             type="button"
-            onClick={onOpenSettings}
+            onClick={isGuest ? handleBackupLogin : onOpenSettings}
+            disabled={loginBusy}
             title={isGuest ? 'Login dengan Google untuk backup' : email ?? 'Status backup'}
-            className={`flex items-center gap-1.5 px-2 sm:px-2.5 py-1.5 rounded-lg text-[11px] font-semibold transition-colors max-w-[9.5rem] sm:max-w-none ${
+            className={`flex items-center gap-1.5 px-2 sm:px-2.5 py-1.5 rounded-lg text-[11px] font-semibold transition-colors max-w-[9.5rem] sm:max-w-none disabled:opacity-70 ${
               isGuest
                 ? 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800'
                 : sync.phase === 'offline'
@@ -140,7 +161,9 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
           >
             <SyncIcon
               className={`w-3.5 h-3.5 shrink-0 ${
-                sync.phase === 'saving' || sync.phase === 'syncing' ? 'animate-spin' : ''
+                loginBusy || sync.phase === 'saving' || sync.phase === 'syncing'
+                  ? 'animate-spin'
+                  : ''
               }`}
             />
             <span className="truncate">{syncText}</span>

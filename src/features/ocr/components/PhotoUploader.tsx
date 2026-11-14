@@ -3,23 +3,27 @@
  * @description Dua jalur unggah: kamera untuk struk kertas, atau screenshot untuk bukti transfer / e-wallet.
  */
 
-import React, { useRef } from 'react';
+import React, { useLayoutEffect, useRef } from 'react';
 import { Camera, Upload, Sparkles, Image as ImageIcon, ShieldCheck } from 'lucide-react';
 import type { ImageKind } from '../../../lib/image-source';
-import { capturePhotoWithCamera } from '../../../lib/camera';
+import { capturePhotoWithCamera, isNativeCameraAvailable } from '../../../lib/camera';
 import { SAMPLE_RECEIPTS, SampleReceipt } from '../utils/sampleReceipts';
 
 interface PhotoUploaderProps {
   onImageSelected: (imageSource: string | File, previewUrl: string, kind: ImageKind) => void;
   isLoading?: boolean;
+  /** Sumber yang sudah dipilih sebelumnya: langsung buka kamera / file, tanpa pilih dua kali. */
+  autoStart?: ImageKind | null;
 }
 
 export const PhotoUploader: React.FC<PhotoUploaderProps> = ({
   onImageSelected,
   isLoading = false,
+  autoStart = null,
 }) => {
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const galleryInputRef = useRef<HTMLInputElement>(null);
+  const autoStartedRef = useRef(false);
 
   const handleFileChange = (
     e: React.ChangeEvent<HTMLInputElement>,
@@ -47,6 +51,22 @@ export const PhotoUploader: React.FC<PhotoUploaderProps> = ({
       cameraInputRef.current?.click();
     }
   };
+
+  // Layout effect: klik input file tetap dianggap bagian dari gesture pengguna (aman di iOS).
+  useLayoutEffect(() => {
+    if (!autoStart || autoStartedRef.current) return;
+    autoStartedRef.current = true;
+
+    if (autoStart === 'photo') {
+      if (isNativeCameraAvailable()) {
+        void handleCameraClick();
+      } else {
+        cameraInputRef.current?.click();
+      }
+    } else {
+      galleryInputRef.current?.click();
+    }
+  }, [autoStart]);
 
   return (
     <div className="w-full space-y-4">

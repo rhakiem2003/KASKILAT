@@ -27,6 +27,8 @@ interface ScanReceiptModalProps {
   categories: Category[];
   onTransactionSaved: (input: CreateTransactionInput) => Promise<unknown>;
   onOpenSettings?: () => void;
+  /** Sumber yang sudah dipilih di menu sebelumnya; langsung membuka kamera / file. */
+  initialMode?: ImageKind | null;
 }
 
 export const ScanReceiptModal: React.FC<ScanReceiptModalProps> = ({
@@ -35,6 +37,7 @@ export const ScanReceiptModal: React.FC<ScanReceiptModalProps> = ({
   categories,
   onTransactionSaved,
   onOpenSettings,
+  initialMode = null,
 }) => {
   const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
   const [pendingImage, setPendingImage] = useState<string | File | null>(null);
@@ -203,7 +206,7 @@ export const ScanReceiptModal: React.FC<ScanReceiptModalProps> = ({
             </div>
           </div>
         ) : !previewImageUrl ? (
-          <PhotoUploader onImageSelected={handleImageSelected} />
+          <PhotoUploader onImageSelected={handleImageSelected} autoStart={initialMode} />
         ) : (
           <>
             <OCRResultPreview

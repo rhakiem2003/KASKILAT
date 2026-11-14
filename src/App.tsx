@@ -35,6 +35,7 @@ import {
 import { Transaction, CreateTransactionInput } from './features/transactions/types/transaction.type';
 import { deleteReceiptPhoto } from './features/storage/services/photo.service';
 import { APP_CONFIG } from './lib/constants';
+import type { ImageKind } from './lib/image-source';
 import { Loader2 } from 'lucide-react';
 
 export default function App() {
@@ -43,6 +44,7 @@ export default function App() {
 
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isScanModalOpen, setIsScanModalOpen] = useState(false);
+  const [scanInitialMode, setScanInitialMode] = useState<ImageKind | null>(null);
   const [isManualModalOpen, setIsManualModalOpen] = useState(false);
   const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
@@ -159,10 +161,12 @@ export default function App() {
         onClose={() => setIsAddModalOpen(false)}
         onCamera={() => {
           setIsAddModalOpen(false);
+          setScanInitialMode('photo');
           setIsScanModalOpen(true);
         }}
         onScreenshot={() => {
           setIsAddModalOpen(false);
+          setScanInitialMode('screenshot');
           setIsScanModalOpen(true);
         }}
         onManual={() => {
@@ -173,11 +177,16 @@ export default function App() {
 
       <ScanReceiptModal
         isOpen={isScanModalOpen}
-        onClose={() => setIsScanModalOpen(false)}
+        initialMode={scanInitialMode}
+        onClose={() => {
+          setIsScanModalOpen(false);
+          setScanInitialMode(null);
+        }}
         categories={categories}
         onTransactionSaved={handleSaveFromScan}
         onOpenSettings={() => {
           setIsScanModalOpen(false);
+          setScanInitialMode(null);
           setIsSettingsModalOpen(true);
         }}
       />
