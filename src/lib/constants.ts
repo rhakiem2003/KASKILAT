@@ -27,6 +27,17 @@ export const APP_CONFIG = {
 export const DEFAULT_GOOGLE_CLIENT_ID =
   '85880586033-5ea9ilsrbvc9mcsmvjr1prbi3ttvnus4.apps.googleusercontent.com';
 
+/**
+ * Login panjang: saat token Google kedaluwarsa, aplikasi memperbaruinya diam-diam
+ * lewat pengalihan halaman ke Google (bukan jendela popup), sehingga pengguna tidak
+ * perlu menekan "Sambung" tiap membuka aplikasi.
+ *
+ * Hanya boleh diaktifkan setelah alamat kembali (Authorized redirect URI)
+ * `https://kaskilat.vercel.app/` terdaftar di Google Cloud Console; tanpa itu
+ * pengguna akan mendarat di halaman error redirect_uri_mismatch.
+ */
+export const GOOGLE_SILENT_RESTORE_ENABLED = false;
+
 export const PAYMENT_METHODS = [
   'Tunai',
   'QRIS',

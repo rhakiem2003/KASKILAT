@@ -3,10 +3,16 @@
  * @description Login dengan Google via Google Identity Services (GIS).
  * Client ID berasal dari env build (VITE_GOOGLE_CLIENT_ID) atau default publik
  * di constants; pengguna tidak pernah mengisinya.
- * Access token hanya hidup di memori; localStorage menyimpan profil saja.
+ * Profil + token disimpan di localStorage agar aplikasi tidak minta login ulang
+ * tiap dibuka. Token tetap berumur ~1 jam; sesi panjang diperbarui diam-diam
+ * lewat pengalihan halaman (lihat GOOGLE_SILENT_RESTORE_ENABLED di constants).
  */
 
-import { APP_CONFIG, DEFAULT_GOOGLE_CLIENT_ID } from '../../../lib/constants';
+import {
+  APP_CONFIG,
+  DEFAULT_GOOGLE_CLIENT_ID,
+  GOOGLE_SILENT_RESTORE_ENABLED,
+} from '../../../lib/constants';
 
 const GSI_SRC = 'https://accounts.google.com/gsi/client';
 const SCOPES =
@@ -125,6 +131,207 @@ function scheduleTokenRefresh(): void {
 }
 
 scheduleTokenRefresh();
+
+/* ------------------------------------------------------------------ */
+/* Sesi panjang: kembali dari pengalihan Google                        */
+/* ------------------------------------------------------------------ */
+
+export type RedirectIntent = 'login' | 'restore';
+
+const REDIRECT_STATE_KEY = 'kaskilat_google_redirect_state';
+const REDIRECT_INTENT_KEY = 'kaskilat_google_redirect_intent';
+const REDIRECT_ATTEMPT_KEY = 'kaskilat_google_redirect_at';
+const REDIRECT_BLOCKED_KEY = 'kaskilat_google_redirect_blocked_until';
+const REDIRECT_ERROR_KEY = 'kaskilat_google_redirect_error';
+const SILENT_RESTORE_MIN_GAP_MS = 30 * 60_000;
+const SILENT_RESTORE_BLOCK_MS = 24 * 60 * 60_000;
+const AUTH_ENDPOINT = 'https://accounts.google.com/o/oauth2/v2/auth';
+
+let pendingRedirectToken: { accessToken: string; expiresAt: number } | null = null;
+
+/**
+ * Alamat kembali setelah pengalihan Google harus sama persis dengan yang
+ * didaftarkan di Google Cloud Console (Authorized redirect URI).
+ */
+export function getRedirectUri(): string {
+  const base = import.meta.env.BASE_URL || '/';
+  return new URL(base, window.location.origin).href;
+}
+
+function createState(): string {
+  const bytes = new Uint8Array(16);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+
+/**
+ * Berpindah ke halaman izin Google di tab yang sama (bukan popup), lalu Google
+ * mengembalikan token pada bagian #hash alamat aplikasi.
+ * prompt 'none' = benar-benar diam; 'select_account' = pengguna memilih akun.
+ */
+export function startGoogleRedirect(intent: RedirectIntent, prompt: string): void {
+  const state = createState();
+  try {
+    localStorage.setItem(REDIRECT_STATE_KEY, state);
+    localStorage.setItem(REDIRECT_INTENT_KEY, intent);
+  } catch {
+    // Tanpa penyimpanan state, pengalihan tidak bisa diverifikasi; batalkan.
+    return;
+  }
+
+  const params = new URLSearchParams({
+    client_id: getGoogleClientId(),
+    redirect_uri: getRedirectUri(),
+    response_type: 'token',
+    scope: SCOPES,
+    state,
+    prompt,
+  });
+  window.location.assign(`${AUTH_ENDPOINT}?${params.toString()}`);
+}
+
+/**
+ * Bila halaman dibuka kembali dari Google, token ada di bagian #hash URL.
+ * Ambil tokennya lalu bersihkan alamat supaya tidak tertinggal di riwayat.
+ */
+function readRedirectCredentials(): { accessToken: string; expiresAt: number } | null {
+  if (typeof window === 'undefined') return null;
+  const hash = window.location.hash.replace(/^#/, '');
+  if (!hash) return null;
+
+  const params = new URLSearchParams(hash);
+  const token = params.get('access_token');
+  const hasError = params.has('error');
+  if (!token && !hasError) return null;
+
+  window.history.replaceState(
+    {},
+    document.title,
+    window.location.pathname + window.location.search
+  );
+
+  let expectedState = '';
+  try {
+    expectedState = localStorage.getItem(REDIRECT_STATE_KEY) || '';
+    localStorage.removeItem(REDIRECT_STATE_KEY);
+    // Cap percobaan sengaja dibiarkan: mencegah pengalihan ulang berturut-turut
+    // bila Google tidak mengembalikan token yang bisa dipakai.
+  } catch {
+    // abaikan
+  }
+
+  const stateMatches = Boolean(expectedState) && params.get('state') === expectedState;
+
+  if (!token || hasError || !stateMatches) {
+    if (hasError) {
+      try {
+        const message = params.get('error_description');
+        if (message) localStorage.setItem(REDIRECT_ERROR_KEY, message);
+      } catch {
+        // abaikan
+      }
+    }
+    // Jangan membebani pengguna dengan pengalihan berulang; coba lagi nanti.
+    try {
+      localStorage.setItem(REDIRECT_BLOCKED_KEY, String(Date.now() + SILENT_RESTORE_BLOCK_MS));
+    } catch {
+      // abaikan
+    }
+    return null;
+  }
+
+  const expiresIn = Number(params.get('expires_in') || 3600);
+  return { accessToken: token, expiresAt: Date.now() + expiresIn * 1000 };
+}
+
+pendingRedirectToken = readRedirectCredentials();
+
+/**
+ * Selesaikan login yang baru kembali dari Google. Dipanggil saat aplikasi mulai,
+ * sebelum menentukan mode tamu/akun.
+ */
+export async function resolveRedirectLogin(): Promise<GoogleSession | null> {
+  const credentials = pendingRedirectToken;
+  pendingRedirectToken = null;
+  if (!credentials) return null;
+
+  try {
+    const profile = await fetchUserInfo(credentials.accessToken);
+    const next: GoogleSession = {
+      email: profile.email,
+      name: profile.name,
+      picture: profile.picture,
+      accessToken: credentials.accessToken,
+      expiresAt: credentials.expiresAt,
+    };
+    try {
+      localStorage.removeItem(REDIRECT_BLOCKED_KEY);
+    } catch {
+      // abaikan
+    }
+    persistSession(next);
+    return next;
+  } catch {
+    // Token tidak bisa dipakai (mis. jaringan putus). Beri jeda sebelum
+    // mencoba mengalihkan lagi supaya aplikasi tidak bolak-balik ke Google.
+    try {
+      sessionStorage.setItem(REDIRECT_ATTEMPT_KEY, String(Date.now()));
+    } catch {
+      // abaikan
+    }
+    return null;
+  }
+}
+
+/** Alasan pengalihan terakhir (mis. pengguna menutup izin Google), sekali pakai. */
+export function takeRedirectIntent(): RedirectIntent | null {
+  try {
+    const value = localStorage.getItem(REDIRECT_INTENT_KEY);
+    localStorage.removeItem(REDIRECT_INTENT_KEY);
+    return value === 'login' || value === 'restore' ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+export function takeRedirectError(): string | null {
+  try {
+    const value = localStorage.getItem(REDIRECT_ERROR_KEY);
+    localStorage.removeItem(REDIRECT_ERROR_KEY);
+    return value;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Perbarui token diam-diam lewat pengalihan halaman. Dengan prompt 'none',
+ * Google tidak menampilkan layar apa pun: bila akun Google masih login, token
+ * baru langsung dikembalikan; bila tidak, aplikasi tetap terbuka dengan data lokal.
+ * Mengembalikan true bila halaman sedang berpindah ke Google.
+ */
+export function startSilentGoogleRestore(): boolean {
+  if (!GOOGLE_SILENT_RESTORE_ENABLED) return false;
+  if (!isGoogleConfigured() || !hasGoogleSession() || isAccessTokenValid()) return false;
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) return false;
+
+  try {
+    if (Number(localStorage.getItem(REDIRECT_BLOCKED_KEY) || 0) > Date.now()) return false;
+    const lastAttempt = Number(sessionStorage.getItem(REDIRECT_ATTEMPT_KEY) || 0);
+    if (Date.now() - lastAttempt < SILENT_RESTORE_MIN_GAP_MS) return false;
+  } catch {
+    // Tanpa penyimpanan pembatas tetap boleh mencoba sekali
+  }
+
+  try {
+    sessionStorage.setItem(REDIRECT_ATTEMPT_KEY, String(Date.now()));
+  } catch {
+    // abaikan
+  }
+
+  startGoogleRedirect('restore', 'none');
+  return true;
+}
 
 export function getGoogleClientId(): string {
   return String(import.meta.env.VITE_GOOGLE_CLIENT_ID || DEFAULT_GOOGLE_CLIENT_ID).trim();

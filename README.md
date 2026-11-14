@@ -76,7 +76,11 @@ Client ID milik developer, **bukan** input dari pengguna. Pengguna hanya melihat
 5. **Authorized JavaScript origins**:
    - `http://localhost:3000` (dev Vite)
    - domain produksi, mis. `https://kaskilat.vercel.app`
-6. **Authorized redirect URIs**: tidak perlu (memakai Google Identity Services token flow di browser).
+6. **Authorized redirect URIs** (opsional, untuk login yang bertahan berhari-hari):
+   - `https://kaskilat.vercel.app/` — harus sama persis, termasuk garis miring di akhir
+   - `http://localhost:3000/` dan `http://localhost:4173/` (dev/preview)
+   
+   Setelah alamat itu tersimpan, ubah `GOOGLE_SILENT_RESTORE_ENABLED` menjadi `true` di `src/lib/constants.ts` lalu deploy. Tanpa langkah ini, biarkan `false`: login tetap memakai popup Google biasa.
 7. Salin Client ID (`xxxxx.apps.googleusercontent.com`). ID publik ini sudah ditanam sebagai default di `src/lib/constants.ts`.
 
 #### Pasang di Vercel (opsional)

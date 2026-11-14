@@ -33,6 +33,11 @@ import {
   getSessionEmail,
   hasGoogleSession,
   isAccessTokenValid,
+  resolveRedirectLogin,
+  startGoogleRedirect,
+  startSilentGoogleRestore,
+  takeRedirectError,
+  takeRedirectIntent,
 } from '../../auth/services/auth.service';
 import {
   clearDriveCache,
@@ -44,7 +49,7 @@ import {
   migratePhotoToDrive,
 } from '../../storage/services/photo.service';
 import { createEmptyDatabase, TemplateType } from '../../../lib/templates';
-import { APP_CONFIG } from '../../../lib/constants';
+import { APP_CONFIG, GOOGLE_SILENT_RESTORE_ENABLED } from '../../../lib/constants';
 import { showToast } from '../../../lib/toast';
 import type {
   CreateTransactionInput,
@@ -54,6 +59,26 @@ import type {
 import type { CreateCategoryInput, Category } from '../../categories/types/category.type';
 
 const SYNC_DEBOUNCE_MS = 3000;
+const PENDING_TEMPLATE_KEY = 'kaskilat_google_pending_template';
+
+function savePendingTemplate(template?: TemplateType): void {
+  try {
+    if (template) localStorage.setItem(PENDING_TEMPLATE_KEY, template);
+    else localStorage.removeItem(PENDING_TEMPLATE_KEY);
+  } catch {
+    // abaikan
+  }
+}
+
+function takePendingTemplate(): TemplateType | undefined {
+  try {
+    const value = localStorage.getItem(PENDING_TEMPLATE_KEY);
+    localStorage.removeItem(PENDING_TEMPLATE_KEY);
+    return value === 'umkm' || value === 'personal' ? value : undefined;
+  } catch {
+    return undefined;
+  }
+}
 
 let snapshot: AppSnapshot = {
   status: 'loading',
@@ -244,8 +269,34 @@ async function initOnce(): Promise<void> {
   attachOnlineListener();
   setSnapshot({ status: 'loading' });
 
+  // Bila aplikasi baru kembali dari halaman Google, token barunya sudah menunggu.
+  await resolveRedirectLogin();
+  const intent = takeRedirectIntent();
+  const pendingTemplate = takePendingTemplate();
+
+  const redirectError = takeRedirectError();
+  if (intent === 'login' && redirectError) {
+    showToast('Login Google dibatalkan. Data tetap aman di HP ini.', 'error');
+  }
+
   const email = getSessionEmail();
   if (hasGoogleSession() && email) {
+    if (intent === 'login' && isAccessTokenValid()) {
+      // Baru kembali dari layar izin Google: pola penyambungan akun tetap sama
+      // seperti login popup, termasuk tawaran memindahkan data tamu.
+      await activateAccount(email, pendingTemplate);
+      return;
+    }
+
+    // Token habis: sambungkan ulang diam-diam tanpa perlu diketuk pengguna.
+    if (!isAccessTokenValid() && startSilentGoogleRestore()) {
+      // Halaman sedang berpindah ke Google. Kalau pengalihan ternyata diblokir,
+      // aplikasi tetap terbuka dengan data lokal setelah beberapa detik.
+      window.setTimeout(() => {
+        void loadAccount(email);
+      }, 8000);
+      return;
+    }
     await loadAccount(email);
     return;
   }
@@ -420,6 +471,16 @@ async function ensureGoogleSession(): Promise<string> {
 }
 
 export async function startWithGoogle(template?: TemplateType): Promise<void> {
+  if (GOOGLE_SILENT_RESTORE_ENABLED) {
+    // Login lewat pengalihan halaman: izin Google tersimpan di konteks aplikasi
+    // ini, sehingga pembukaan berikutnya bisa menyambung diam-diam.
+    // Menyambung ulang akun lama tidak perlu memunculkan tawaran pindah data tamu.
+    const reconnect = Boolean(getSessionEmail());
+    savePendingTemplate(reconnect ? undefined : template);
+    startGoogleRedirect(reconnect ? 'restore' : 'login', 'select_account');
+    return;
+  }
+
   const email = await ensureGoogleSession();
   await activateAccount(email, template);
 }
