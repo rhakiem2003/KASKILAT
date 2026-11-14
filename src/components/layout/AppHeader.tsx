@@ -40,7 +40,7 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
   onOpenSettings,
 }) => {
   const { mode, email, sync } = useAppDatabase();
-  const { canInstall, needsManualInstall, install } = useInstallPrompt();
+  const { canInstall, standalone, platform, install } = useInstallPrompt();
   const [logoutBusy, setLogoutBusy] = useState(false);
   const [loginBusy, setLoginBusy] = useState(false);
   const [showInstallHint, setShowInstallHint] = useState(false);
@@ -184,17 +184,19 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
               <span className="truncate hidden sm:inline md:hidden lg:inline">{syncText}</span>
             </button>
 
-            {(canInstall || needsManualInstall) && (
+            {!standalone && (
               <button
                 type="button"
                 onClick={() => {
                   if (canInstall) void install();
                   else setShowInstallHint(true);
                 }}
-                className="flex md:hidden lg:flex items-center justify-center gap-1.5 px-2 sm:px-2.5 h-9 rounded-lg text-[11px] font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700"
+                className="flex md:hidden lg:flex items-center justify-center gap-1.5 px-2 sm:px-2.5 h-9 shrink-0 rounded-lg text-[11px] font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700"
                 title="Install KasKilat sebagai aplikasi"
+                aria-label="Install KasKilat sebagai aplikasi"
               >
                 <Download className="w-3.5 h-3.5" />
+                <span className="hidden min-[360px]:inline lg:hidden">Pasang</span>
                 <span className="hidden lg:inline">Install App</span>
               </button>
             )}
@@ -249,25 +251,52 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
         </div>
       </header>
 
-    <Modal
-      isOpen={showInstallHint}
-      onClose={() => setShowInstallHint(false)}
-      title="Pasang di iPhone"
-      description="KasKilat bisa dipasang seperti aplikasi biasa, tanpa App Store."
-    >
-      <ol className="space-y-3 text-sm text-slate-700 dark:text-slate-300 list-decimal list-inside">
-        <li>Buka KasKilat di browser Safari.</li>
-        <li>
-          Ketuk tombol <strong>Bagikan</strong> (kotak dengan panah ke atas) di bawah layar.
-        </li>
-        <li>
-          Pilih <strong>Tambahkan ke Layar Utama</strong>, lalu ketuk <strong>Tambah</strong>.
-        </li>
-      </ol>
-      <p className="mt-4 text-xs text-slate-500 dark:text-slate-400">
-        Setelah itu ikon KasKilat muncul di layar utama dan bisa dibuka seperti aplikasi.
-      </p>
-    </Modal>
+      <Modal
+        isOpen={showInstallHint}
+        onClose={() => setShowInstallHint(false)}
+        title="Pasang KasKilat"
+        description="Jadikan KasKilat aplikasi di layar utama HP, tanpa Play Store atau App Store."
+      >
+        <ol className="space-y-3 text-sm text-slate-700 dark:text-slate-300 list-decimal list-inside">
+          {platform === 'ios' && (
+            <>
+              <li>Buka KasKilat di browser Safari.</li>
+              <li>
+                Ketuk tombol <strong>Bagikan</strong> (kotak dengan panah ke atas) di bawah layar.
+              </li>
+              <li>
+                Pilih <strong>Tambahkan ke Layar Utama</strong>, lalu ketuk <strong>Tambah</strong>.
+              </li>
+            </>
+          )}
+          {platform === 'android' && (
+            <>
+              <li>Buka KasKilat di browser Chrome.</li>
+              <li>
+                Ketuk menu <strong>titik tiga</strong> di kanan atas.
+              </li>
+              <li>
+                Pilih <strong>Instal aplikasi</strong> atau <strong>Tambahkan ke Layar utama</strong>.
+              </li>
+            </>
+          )}
+          {platform === 'other' && (
+            <>
+              <li>
+                Klik ikon <strong>instal</strong> di bilah alamat browser.
+              </li>
+              <li>
+                Atau buka menu browser, lalu pilih <strong>Install KasKilat</strong> /{' '}
+                <strong>Install app</strong>.
+              </li>
+            </>
+          )}
+        </ol>
+        <p className="mt-4 text-xs text-slate-500 dark:text-slate-400">
+          Kalau menu tersebut tidak muncul (misalnya sedang dibuka dari dalam aplikasi lain),
+          salin alamat kaskilat.vercel.app lalu buka di Chrome atau Safari.
+        </p>
+      </Modal>
     </>
   );
 };
