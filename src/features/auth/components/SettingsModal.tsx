@@ -416,6 +416,26 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
               Catatan dan foto struk disimpan di HP ini dan/atau Google Drive pribadimu. Foto dari
               aplikasi tidak muncul di Galeri HP.
             </p>
+            <p className="flex flex-wrap gap-x-3 gap-y-1 pt-0.5">
+              <a
+                href="/privacy"
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1 font-semibold text-emerald-700 hover:underline dark:text-emerald-400"
+              >
+                <ExternalLink className="w-3 h-3" />
+                Kebijakan Privasi
+              </a>
+              <a
+                href="/about"
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1 font-semibold text-emerald-700 hover:underline dark:text-emerald-400"
+              >
+                <ExternalLink className="w-3 h-3" />
+                Tentang KasKilat
+              </a>
+            </p>
           </div>
         </section>
 
