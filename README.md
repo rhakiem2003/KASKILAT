@@ -74,12 +74,14 @@ Client ID milik developer, **bukan** input dari pengguna. Pengguna hanya melihat
 3. **OAuth consent screen**: tipe External, isi nama aplikasi. Selama masih *Testing*, tambahkan email kamu (dan email tester lain) di **Test users**.
 4. **Credentials → Create credentials → OAuth client ID → Web application**.
 5. **Authorized JavaScript origins**:
-   - `http://localhost:5173` (dev Vite)
+   - `http://localhost:3000` (dev Vite)
    - domain produksi, mis. `https://kaskilat.vercel.app`
 6. **Authorized redirect URIs**: tidak perlu (memakai Google Identity Services token flow di browser).
-7. Salin Client ID (`xxxxx.apps.googleusercontent.com`).
+7. Salin Client ID (`xxxxx.apps.googleusercontent.com`). ID publik ini sudah ditanam sebagai default di `src/lib/constants.ts`.
 
-#### Pasang di Vercel
+#### Pasang di Vercel (opsional)
+
+Default Client ID sudah ikut ter-build, jadi deploy tanpa env pun login tetap aktif. Isi env hanya bila ingin menimpa nilai default.
 
 Project → **Settings → Environment Variables**:
 

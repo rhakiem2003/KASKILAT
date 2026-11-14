@@ -1,10 +1,11 @@
 /**
  * @file auth.service.ts
  * @description Login dengan Google via Google Identity Services (GIS).
- * Client ID hanya berasal dari env build (VITE_GOOGLE_CLIENT_ID); pengguna tidak pernah mengisinya.
+ * Client ID berasal dari env build (VITE_GOOGLE_CLIENT_ID) atau default publik
+ * di constants; pengguna tidak pernah mengisinya.
  */
 
-import { APP_CONFIG } from '../../../lib/constants';
+import { APP_CONFIG, DEFAULT_GOOGLE_CLIENT_ID } from '../../../lib/constants';
 
 const GSI_SRC = 'https://accounts.google.com/gsi/client';
 const SCOPES =
@@ -92,7 +93,7 @@ function persistSession(next: GoogleSession | null): void {
 }
 
 export function getGoogleClientId(): string {
-  return String(import.meta.env.VITE_GOOGLE_CLIENT_ID || '').trim();
+  return String(import.meta.env.VITE_GOOGLE_CLIENT_ID || DEFAULT_GOOGLE_CLIENT_ID).trim();
 }
 
 export function isGoogleConfigured(): boolean {

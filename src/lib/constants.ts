@@ -19,6 +19,14 @@ export const APP_CONFIG = {
   },
 } as const;
 
+/**
+ * Client ID OAuth publik (Web application). Aman ditanam di bundle: keamanan
+ * flow token bergantung pada Authorized JavaScript origins, bukan kerahasiaan ID.
+ * Env VITE_GOOGLE_CLIENT_ID tetap bisa menimpa nilai ini.
+ */
+export const DEFAULT_GOOGLE_CLIENT_ID =
+  '85880586033-5ea9ilsrbvc9mcsmvjr1prbi3ttvnus4.apps.googleusercontent.com';
+
 export const PAYMENT_METHODS = [
   'Tunai',
   'QRIS',
