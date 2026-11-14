@@ -32,11 +32,12 @@ export const DEFAULT_GOOGLE_CLIENT_ID =
  * lewat pengalihan halaman ke Google (bukan jendela popup), sehingga pengguna tidak
  * perlu menekan "Sambung" tiap membuka aplikasi.
  *
- * Hanya boleh diaktifkan setelah alamat kembali (Authorized redirect URI)
- * `https://kaskilat.vercel.app/` terdaftar di Google Cloud Console; tanpa itu
- * pengguna akan mendarat di halaman error redirect_uri_mismatch.
+ * Hanya berjalan pada origin yang alamat kembalinya (Authorized redirect URI)
+ * sudah terdaftar di Google Cloud Console. Origin lain tetap memakai popup biasa.
  */
-export const GOOGLE_SILENT_RESTORE_ENABLED = false;
+export const GOOGLE_SILENT_RESTORE_ENABLED = true;
+
+export const GOOGLE_SILENT_RESTORE_ORIGINS = ['https://kaskilat.vercel.app'];
 
 export const PAYMENT_METHODS = [
   'Tunai',

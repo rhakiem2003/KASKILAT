@@ -33,6 +33,7 @@ import {
   getSessionEmail,
   hasGoogleSession,
   isAccessTokenValid,
+  isLongSessionEnabled,
   resolveRedirectLogin,
   startGoogleRedirect,
   startSilentGoogleRestore,
@@ -49,7 +50,7 @@ import {
   migratePhotoToDrive,
 } from '../../storage/services/photo.service';
 import { createEmptyDatabase, TemplateType } from '../../../lib/templates';
-import { APP_CONFIG, GOOGLE_SILENT_RESTORE_ENABLED } from '../../../lib/constants';
+import { APP_CONFIG } from '../../../lib/constants';
 import { showToast } from '../../../lib/toast';
 import type {
   CreateTransactionInput,
@@ -471,7 +472,7 @@ async function ensureGoogleSession(): Promise<string> {
 }
 
 export async function startWithGoogle(template?: TemplateType): Promise<void> {
-  if (GOOGLE_SILENT_RESTORE_ENABLED) {
+  if (isLongSessionEnabled()) {
     // Login lewat pengalihan halaman: izin Google tersimpan di konteks aplikasi
     // ini, sehingga pembukaan berikutnya bisa menyambung diam-diam.
     // Menyambung ulang akun lama tidak perlu memunculkan tawaran pindah data tamu.

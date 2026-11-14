@@ -12,6 +12,7 @@ import {
   APP_CONFIG,
   DEFAULT_GOOGLE_CLIENT_ID,
   GOOGLE_SILENT_RESTORE_ENABLED,
+  GOOGLE_SILENT_RESTORE_ORIGINS,
 } from '../../../lib/constants';
 
 const GSI_SRC = 'https://accounts.google.com/gsi/client';
@@ -310,8 +311,13 @@ export function takeRedirectError(): string | null {
  * baru langsung dikembalikan; bila tidak, aplikasi tetap terbuka dengan data lokal.
  * Mengembalikan true bila halaman sedang berpindah ke Google.
  */
-export function startSilentGoogleRestore(): boolean {
+export function isLongSessionEnabled(): boolean {
   if (!GOOGLE_SILENT_RESTORE_ENABLED) return false;
+  return GOOGLE_SILENT_RESTORE_ORIGINS.includes(window.location.origin);
+}
+
+export function startSilentGoogleRestore(): boolean {
+  if (!isLongSessionEnabled()) return false;
   if (!isGoogleConfigured() || !hasGoogleSession() || isAccessTokenValid()) return false;
   if (typeof navigator !== 'undefined' && navigator.onLine === false) return false;
 
