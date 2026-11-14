@@ -87,7 +87,6 @@ Project → **Settings → Environment Variables**:
 
 ```
 VITE_GOOGLE_CLIENT_ID=xxxxx.apps.googleusercontent.com
-VITE_GEMINI_API_KEY=            # opsional, key pribadi developer sebagai fallback
 VITE_GEMINI_MODEL=gemini-3-flash-preview
 ```
 
@@ -99,7 +98,6 @@ Redeploy setelah menambah variabel (Vite menanam nilai `VITE_*` saat build).
 
 ```env
 VITE_GOOGLE_CLIENT_ID=
-VITE_GEMINI_API_KEY= # optional, developer personal only
 VITE_GEMINI_MODEL=gemini-3-flash-preview
 ```
 

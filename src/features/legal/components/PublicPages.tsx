@@ -132,11 +132,11 @@ export const PrivacyPage: React.FC = () => {
         <ul className="list-disc pl-5 space-y-1.5">
           <li>
             <strong>IndexedDB</strong> — transaksi, kategori, dan cache foto struk agar aplikasi
-            tetap dapat dipakai offline.
+            tetap dapat dipakai offline. Access token Google tidak disimpan di sini.
           </li>
           <li>
-            <strong>localStorage</strong> — sesi login Google, Gemini API key (jika Anda mengisi),
-            dan preferensi tampilan.
+            <strong>localStorage</strong> — profil sesi Google (email, nama, foto; access token
+            tidak disimpan), Gemini API key (jika Anda mengisi), dan preferensi tampilan.
           </li>
         </ul>
       </Section>

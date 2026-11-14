@@ -341,8 +341,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
               <span className="text-slate-600 dark:text-slate-400">
                 {keySource === 'none' ? (
                   <>Offline mode - using Tesseract. Tanpa key, screenshot tetap terbaca offline.</>
-                ) : keySource === 'env' ? (
-                  <>Memakai key bawaan build ini. Kamu bisa menempel key sendiri di bawah.</>
                 ) : (
                   <>Key aktif: <span className="font-mono">{maskApiKey(getUserGeminiKey())}</span></>
                 )}

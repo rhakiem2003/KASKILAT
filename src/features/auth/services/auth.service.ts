@@ -3,6 +3,7 @@
  * @description Login dengan Google via Google Identity Services (GIS).
  * Client ID berasal dari env build (VITE_GOOGLE_CLIENT_ID) atau default publik
  * di constants; pengguna tidak pernah mengisinya.
+ * Access token hanya hidup di memori; localStorage menyimpan profil saja.
  */
 
 import { APP_CONFIG, DEFAULT_GOOGLE_CLIENT_ID } from '../../../lib/constants';
@@ -57,32 +58,56 @@ export class GoogleAuthError extends Error {
   }
 }
 
-function readSessionFromStorage(): GoogleSession | null {
+interface StoredProfile {
+  email: string;
+  name?: string;
+  picture?: string;
+}
+
+/**
+ * Hanya profil yang dipersistenkan. Access token disimpan di memori saja supaya
+ * skrip di origin ini (mis. lewat XSS) tidak bisa membacanya dari localStorage.
+ * Sesi lama yang masih memuat token dimigrasikan saat dibaca.
+ */
+function readProfileFromStorage(): StoredProfile | null {
   if (typeof localStorage === 'undefined') return null;
   try {
     const raw = localStorage.getItem(APP_CONFIG.STORAGE_KEYS.GOOGLE_SESSION);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as Partial<GoogleSession>;
-    if (!parsed.email || typeof parsed.accessToken !== 'string') return null;
-    return {
+    if (!parsed.email) {
+      localStorage.removeItem(APP_CONFIG.STORAGE_KEYS.GOOGLE_SESSION);
+      return null;
+    }
+    const profile: StoredProfile = {
       email: parsed.email,
       name: parsed.name,
       picture: parsed.picture,
-      accessToken: parsed.accessToken,
-      expiresAt: Number(parsed.expiresAt) || 0,
     };
+    if ('accessToken' in parsed || 'expiresAt' in parsed) {
+      localStorage.setItem(APP_CONFIG.STORAGE_KEYS.GOOGLE_SESSION, JSON.stringify(profile));
+    }
+    return profile;
   } catch {
     return null;
   }
 }
 
-let session: GoogleSession | null = readSessionFromStorage();
+const storedProfile = readProfileFromStorage();
+let session: GoogleSession | null = storedProfile
+  ? { ...storedProfile, accessToken: '', expiresAt: 0 }
+  : null;
 
 function persistSession(next: GoogleSession | null): void {
   session = next;
   try {
     if (next) {
-      localStorage.setItem(APP_CONFIG.STORAGE_KEYS.GOOGLE_SESSION, JSON.stringify(next));
+      const profile: StoredProfile = {
+        email: next.email,
+        name: next.name,
+        picture: next.picture,
+      };
+      localStorage.setItem(APP_CONFIG.STORAGE_KEYS.GOOGLE_SESSION, JSON.stringify(profile));
     } else {
       localStorage.removeItem(APP_CONFIG.STORAGE_KEYS.GOOGLE_SESSION);
     }
@@ -245,7 +270,7 @@ export async function connectGoogle(
 }
 
 /**
- * Token valid dari cache, atau refresh senyap sekali bila sesi masih tersimpan.
+ * Token dari memori, atau refresh senyap sekali bila profil sesi masih tersimpan.
  */
 export async function ensureAccessToken(): Promise<string> {
   if (isAccessTokenValid() && session) return session.accessToken;

@@ -18,20 +18,16 @@ export function getUserGeminiKey(): string {
   }
 }
 
-export function getGeminiKeySource(): 'user' | 'env' | 'none' {
-  if (getUserGeminiKey()) return 'user';
-  if (String(import.meta.env.VITE_GEMINI_API_KEY || '').trim()) return 'env';
-  return 'none';
+export function getGeminiKeySource(): 'user' | 'none' {
+  return getUserGeminiKey() ? 'user' : 'none';
 }
 
 /**
- * Key pengguna diutamakan; env hanya fallback milik developer.
+ * Hanya key milik pengguna. Tidak ada key bawaan build: nilai VITE_* akan
+ * ter-inline ke bundle dan bisa dibaca siapa pun yang membuka aplikasi.
  */
 export function getGeminiApiKey(): string | null {
-  const userKey = getUserGeminiKey();
-  if (userKey) return userKey;
-  const envKey = String(import.meta.env.VITE_GEMINI_API_KEY || '').trim();
-  return envKey || null;
+  return getUserGeminiKey() || null;
 }
 
 export function saveGeminiApiKey(key: string): void {
