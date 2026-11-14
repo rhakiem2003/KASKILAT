@@ -22,6 +22,7 @@ import { useAppDatabase } from '../../features/database/hooks/useAppDatabase';
 import { useInstallPrompt } from '../../lib/hooks/useInstallPrompt';
 import { formatSyncTimestamp } from '../../features/transactions/utils/dateFormatter';
 import { logout, startWithGoogle } from '../../features/database/services/database-store';
+import { isAccessTokenValid } from '../../features/auth/services/auth.service';
 import { showToast } from '../../lib/toast';
 
 interface AppHeaderProps {
@@ -77,36 +78,48 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
     }
   };
 
+  // Token Google berumur ~1 jam. Setelah habis, satu ketukan "Sambung" memulihkan
+  // backup Drive tanpa mengetik akun lagi.
+  const needsReconnect = !isGuest && !isAccessTokenValid();
+
   const syncText = isGuest
     ? loginBusy
       ? 'Menghubungkan...'
       : 'Login to Backup'
-    : sync.phase === 'saving' || sync.phase === 'syncing'
-      ? 'Menyimpan...'
-      : sync.phase === 'synced'
-        ? sync.lastSyncedAt
-          ? `Last synced: ${formatSyncTimestamp(sync.lastSyncedAt)}`
-          : 'Tersimpan di Drive'
-        : sync.phase === 'offline'
-          ? 'Offline - tersimpan lokal'
-          : 'Tersimpan lokal';
+    : needsReconnect
+      ? loginBusy
+        ? 'Menyambungkan...'
+        : 'Sambungkan Google'
+      : sync.phase === 'saving' || sync.phase === 'syncing'
+        ? 'Menyimpan...'
+        : sync.phase === 'synced'
+          ? sync.lastSyncedAt
+            ? `Last synced: ${formatSyncTimestamp(sync.lastSyncedAt)}`
+            : 'Tersimpan di Drive'
+          : sync.phase === 'offline'
+            ? 'Offline - tersimpan lokal'
+            : 'Tersimpan lokal';
 
   // Di layar sempit pakai label pendek supaya tombol + Catat tidak terdorong keluar.
   const syncTextShort = isGuest
     ? loginBusy
       ? 'Menghubungkan...'
       : 'Login'
-    : sync.phase === 'saving' || sync.phase === 'syncing'
-      ? 'Menyimpan...'
-      : sync.phase === 'offline'
-        ? 'Offline'
-        : 'Tersimpan';
+    : needsReconnect
+      ? loginBusy
+        ? 'Menyambung...'
+        : 'Sambung'
+      : sync.phase === 'saving' || sync.phase === 'syncing'
+        ? 'Menyimpan...'
+        : sync.phase === 'offline'
+          ? 'Offline'
+          : 'Tersimpan';
 
   const SyncIcon = isGuest
     ? loginBusy
       ? Loader2
       : Smartphone
-    : sync.phase === 'offline'
+    : needsReconnect || sync.phase === 'offline'
       ? CloudOff
       : sync.phase === 'saving' || sync.phase === 'syncing'
         ? Loader2
@@ -162,11 +175,21 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
           <div className="flex items-center gap-1 sm:gap-2.5 min-w-0 shrink">
             <button
               type="button"
-              onClick={isGuest ? handleBackupLogin : onOpenSettings}
+              onClick={
+                isGuest || needsReconnect
+                  ? handleBackupLogin
+                  : onOpenSettings
+              }
               disabled={loginBusy}
-              title={isGuest ? 'Login dengan Google untuk backup' : email ?? 'Status backup'}
-              className={`flex items-center gap-1 sm:gap-1.5 px-1.5 sm:px-2.5 py-1.5 rounded-lg text-[11px] font-semibold transition-colors min-w-0 max-w-[6.5rem] sm:max-w-none md:max-w-[2.5rem] lg:max-w-none disabled:opacity-70 ${
+              title={
                 isGuest
+                  ? 'Login dengan Google untuk backup'
+                  : needsReconnect
+                    ? 'Sambungkan ulang Google agar backup Drive jalan lagi'
+                    : email ?? 'Status backup'
+              }
+              className={`flex items-center gap-1 sm:gap-1.5 px-1.5 sm:px-2.5 py-1.5 rounded-lg text-[11px] font-semibold transition-colors min-w-0 max-w-[6.5rem] sm:max-w-none md:max-w-[2.5rem] lg:max-w-none disabled:opacity-70 ${
+                isGuest || needsReconnect
                   ? 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800'
                   : sync.phase === 'offline'
                     ? 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800'

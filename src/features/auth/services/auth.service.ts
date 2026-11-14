@@ -58,18 +58,13 @@ export class GoogleAuthError extends Error {
   }
 }
 
-interface StoredProfile {
-  email: string;
-  name?: string;
-  picture?: string;
-}
-
 /**
- * Hanya profil yang dipersistenkan. Access token disimpan di memori saja supaya
- * skrip di origin ini (mis. lewat XSS) tidak bisa membacanya dari localStorage.
- * Sesi lama yang masih memuat token dimigrasikan saat dibaca.
+ * Profil dan access token dipersistenkan supaya aplikasi yang ditutup lalu dibuka
+ * lagi tidak meminta login ulang. Token tetap punya masa berlaku (~1 jam) dan
+ * diperbarui diam-diam selagi aplikasi terbuka; setelah kedaluwarsa pengguna
+ * cukup menekan "Sambungkan" sekali (akun Google biasanya sudah terpilih).
  */
-function readProfileFromStorage(): StoredProfile | null {
+function readSessionFromStorage(): GoogleSession | null {
   if (typeof localStorage === 'undefined') return null;
   try {
     const raw = localStorage.getItem(APP_CONFIG.STORAGE_KEYS.GOOGLE_SESSION);
@@ -79,43 +74,57 @@ function readProfileFromStorage(): StoredProfile | null {
       localStorage.removeItem(APP_CONFIG.STORAGE_KEYS.GOOGLE_SESSION);
       return null;
     }
-    const profile: StoredProfile = {
+    const expiresAt = Number(parsed.expiresAt) || 0;
+    const tokenUsable = Boolean(parsed.accessToken) && expiresAt > Date.now();
+    return {
       email: parsed.email,
       name: parsed.name,
       picture: parsed.picture,
+      accessToken: tokenUsable ? String(parsed.accessToken) : '',
+      expiresAt: tokenUsable ? expiresAt : 0,
     };
-    if ('accessToken' in parsed || 'expiresAt' in parsed) {
-      localStorage.setItem(APP_CONFIG.STORAGE_KEYS.GOOGLE_SESSION, JSON.stringify(profile));
-    }
-    return profile;
   } catch {
     return null;
   }
 }
 
-const storedProfile = readProfileFromStorage();
-let session: GoogleSession | null = storedProfile
-  ? { ...storedProfile, accessToken: '', expiresAt: 0 }
-  : null;
+let session: GoogleSession | null = readSessionFromStorage();
 
 function persistSession(next: GoogleSession | null): void {
   session = next;
   try {
     if (next) {
-      const profile: StoredProfile = {
-        email: next.email,
-        name: next.name,
-        picture: next.picture,
-      };
-      localStorage.setItem(APP_CONFIG.STORAGE_KEYS.GOOGLE_SESSION, JSON.stringify(profile));
+      localStorage.setItem(APP_CONFIG.STORAGE_KEYS.GOOGLE_SESSION, JSON.stringify(next));
     } else {
       localStorage.removeItem(APP_CONFIG.STORAGE_KEYS.GOOGLE_SESSION);
     }
   } catch {
     // localStorage bisa diblokir; sesi tetap hidup di memori
   }
+  if (next) scheduleTokenRefresh();
   window.dispatchEvent(new CustomEvent('kaskilat:auth-changed'));
 }
+
+const REFRESH_MARGIN_MS = 5 * 60_000;
+let refreshTimer: ReturnType<typeof setTimeout> | null = null;
+
+/**
+ * Perbarui token diam-diam beberapa menit sebelum kedaluwarsa, selagi aplikasi
+ * masih terbuka. Kalau browser memblokir (mis. tanpa interaksi), abaikan saja:
+ * token lama tetap dipakai sampai habis dan pengguna bisa menyambung manual.
+ */
+function scheduleTokenRefresh(): void {
+  if (refreshTimer) clearTimeout(refreshTimer);
+  refreshTimer = null;
+  if (!session?.accessToken) return;
+  const delay = session.expiresAt - Date.now() - REFRESH_MARGIN_MS;
+  if (delay <= 0) return;
+  refreshTimer = setTimeout(() => {
+    void connectGoogle({ prompt: '' }).catch(() => undefined);
+  }, delay);
+}
+
+scheduleTokenRefresh();
 
 export function getGoogleClientId(): string {
   return String(import.meta.env.VITE_GOOGLE_CLIENT_ID || DEFAULT_GOOGLE_CLIENT_ID).trim();
@@ -186,11 +195,23 @@ async function fetchUserInfo(accessToken: string): Promise<{
   return { email: data.email, name: data.name, picture: data.picture };
 }
 
+let pendingConnect: Promise<GoogleSession> | null = null;
+
 /**
  * Membuka consent Google. Harus dipanggil dari aksi pengguna (klik tombol).
- * `prompt: 'consent'` dipakai untuk login eksplisit; string kosong untuk refresh senyap.
+ * String kosong = browser memakai sesi Google yang ada (tanpa layar izin ulang);
+ * 'consent' hanya untuk kasus yang memang butuh izin ulang.
+ * Panggilan ganda digabung supaya tidak muncul dua jendela Google sekaligus.
  */
-export async function connectGoogle(
+export function connectGoogle(options: { prompt?: string } = {}): Promise<GoogleSession> {
+  if (pendingConnect) return pendingConnect;
+  pendingConnect = connectGoogleInternal(options).finally(() => {
+    pendingConnect = null;
+  });
+  return pendingConnect;
+}
+
+async function connectGoogleInternal(
   options: { prompt?: string } = {}
 ): Promise<GoogleSession> {
   const clientId = getGoogleClientId();
@@ -265,7 +286,7 @@ export async function connectGoogle(
       },
     });
 
-    client.requestAccessToken({ prompt: options.prompt ?? 'consent' });
+    client.requestAccessToken({ prompt: options.prompt ?? '' });
   });
 }
 

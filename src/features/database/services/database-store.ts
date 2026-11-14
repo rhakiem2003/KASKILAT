@@ -312,6 +312,17 @@ async function loadAccount(email: string): Promise<void> {
     sync: { phase: 'syncing', lastSyncedAt: local?.lastSyncedAt ?? null },
   });
 
+  // Token Google hanya bertahan ~1 jam. Kalau sudah habis, jangan membuka jendela
+  // Google sendiri saat aplikasi dibuka; tampilkan data lokal dan minta satu ketukan
+  // "Sambung" (tombol di header) untuk memulihkan backup Drive.
+  if (!isAccessTokenValid()) {
+    setSnapshot({
+      status: local?.database ? 'ready' : 'onboarding',
+      sync: { phase: 'offline', lastSyncedAt: local?.lastSyncedAt ?? null },
+    });
+    return;
+  }
+
   if (local?.database && local.pendingSync) {
     setSnapshot({ status: 'ready' });
     scheduleSync(0);
@@ -404,7 +415,7 @@ async function ensureGoogleSession(): Promise<string> {
       // fall through ke consent penuh
     }
   }
-  const session = await connectGoogle({ prompt: 'consent' });
+  const session = await connectGoogle({ prompt: '' });
   return session.email;
 }
 

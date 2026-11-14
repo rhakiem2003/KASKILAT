@@ -135,8 +135,9 @@ export const PrivacyPage: React.FC = () => {
             tetap dapat dipakai offline. Access token Google tidak disimpan di sini.
           </li>
           <li>
-            <strong>localStorage</strong> — profil sesi Google (email, nama, foto; access token
-            tidak disimpan), Gemini API key (jika Anda mengisi), dan preferensi tampilan.
+            <strong>localStorage</strong> — profil sesi Google beserta token akses sementara
+            (masa berlaku ±1 jam) agar tidak perlu login ulang setiap membuka aplikasi, Gemini
+            API key (jika Anda mengisi), dan preferensi tampilan. Logout menghapus token ini.
           </li>
         </ul>
       </Section>
