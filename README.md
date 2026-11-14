@@ -49,6 +49,18 @@ Gemini API key disimpan **hanya** di `localStorage` perangkat (`kaskilat_gemini_
 
 Tanpa key, aplikasi tetap bisa dipakai penuh dengan Tesseract (mode offline).
 
+## Catat lewat menu "Bagikan" (Android)
+
+Setelah KasKilat **terpasang** di HP (tombol Install App), aplikasi ikut muncul di daftar tujuan berbagi:
+
+1. Buka screenshot bukti transfer / foto struk di Galeri, DANA, GoPay, atau WhatsApp.
+2. Ketuk **Bagikan** → pilih **KasKilat**.
+3. Aplikasi terbuka langsung di form verifikasi dengan nominal, tanggal, dan toko sudah terisi. Tinggal periksa lalu simpan.
+
+Kalau beberapa gambar dikirim sekaligus, semuanya diproses satu per satu — menutup satu struk langsung memuat struk berikutnya. Gambar kiriman hanya dititipkan sementara di perangkat, lalu dihapus setelah dibaca; foto yang disimpan tetap mengikuti aturan yang sama (masuk Drive, bukan Galeri).
+
+Syarat: aplikasi terpasang lewat Chrome "Install app" (bukan sekadar bookmark). **iPhone/iPad belum mendukung** — Safari tidak menyediakan menu berbagi ke aplikasi web, jadi di iOS tetap lewat tombol Foto Struk Kas di dalam aplikasi.
+
 ---
 
 ## Developer
@@ -138,6 +150,7 @@ src/
 - Service worker (Workbox `generateSW`) meng-cache app shell dan aset statis.
 - **`kaskilat-database.json` dikecualikan** dari cache (`NetworkOnly`), begitu juga endpoint `googleapis.com` dan `accounts.google.com`, supaya data tidak pernah basi atau bocor lewat cache.
 - Manifest: nama KasKilat, `display: standalone`, theme `#059669`, ikon 192/512 + maskable.
+- **Web Share Target**: manifest mendaftarkan `share_target` POST multipart ke `/share-target` (berkas `receipt`, `image/*`). [`public/share-target-sw.js`](public/share-target-sw.js) di-`importScripts` oleh service worker, menampung kiriman di cache `kaskilat-share-v1`, lalu mengalihkan ke `/?shared=1`. [`src/lib/share-target.ts`](src/lib/share-target.ts) mengambil berkasnya, menghapus cache, dan menyerahkannya ke `ScanReceiptModal`. Penanda kiriman disimpan di sessionStorage agar bertahan bila aplikasi sempat berpindah halaman sebelum siap.
 
 ### Catatan migrasi
 

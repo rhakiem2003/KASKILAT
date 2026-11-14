@@ -4,7 +4,7 @@
  * lalu verifikasi data sebelum disimpan.
  */
 
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { AlertTriangle, CheckCircle2, Settings } from 'lucide-react';
 import { Modal } from '../../../components/ui/Modal';
 import { Button } from '../../../components/ui/Button';
@@ -18,7 +18,7 @@ import { recognizeReceipt } from '../services/ocr.service';
 import { saveReceiptPhoto } from '../../storage/services/photo.service';
 import { createTransactionId } from '../../database/services/database-utils';
 import { suggestCategoryId } from '../utils/category-suggestions';
-import type { ImageKind } from '../../../lib/image-source';
+import { detectImageKind, type ImageKind } from '../../../lib/image-source';
 import { showToast } from '../../../lib/toast';
 
 interface ScanReceiptModalProps {
@@ -29,6 +29,8 @@ interface ScanReceiptModalProps {
   onOpenSettings?: () => void;
   /** Sumber yang sudah dipilih di menu sebelumnya; langsung membuka kamera / file. */
   initialMode?: ImageKind | null;
+  /** Gambar kiriman menu "Bagikan" HP; langsung dibaca tanpa memilih file lagi. */
+  initialImage?: File | null;
 }
 
 export const ScanReceiptModal: React.FC<ScanReceiptModalProps> = ({
@@ -38,6 +40,7 @@ export const ScanReceiptModal: React.FC<ScanReceiptModalProps> = ({
   onTransactionSaved,
   onOpenSettings,
   initialMode = null,
+  initialImage = null,
 }) => {
   const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
   const [pendingImage, setPendingImage] = useState<string | File | null>(null);
@@ -111,6 +114,18 @@ export const ScanReceiptModal: React.FC<ScanReceiptModalProps> = ({
       });
     }
   };
+
+  const loadedShareRef = useRef<File | null>(null);
+
+  useEffect(() => {
+    if (!isOpen || !initialImage || loadedShareRef.current === initialImage) return;
+    loadedShareRef.current = initialImage;
+    void handleImageSelected(
+      initialImage,
+      URL.createObjectURL(initialImage),
+      detectImageKind(initialImage)
+    );
+  }, [isOpen, initialImage]);
 
   const handleSaveTransaction = async (data: CreateTransactionInput) => {
     setIsSubmitting(true);

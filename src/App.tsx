@@ -35,6 +35,13 @@ import {
 import { Transaction, CreateTransactionInput } from './features/transactions/types/transaction.type';
 import { deleteReceiptPhoto } from './features/storage/services/photo.service';
 import { APP_CONFIG } from './lib/constants';
+import {
+  clearPendingShare,
+  hasPendingShare,
+  markShareArrival,
+  takeSharedImages,
+} from './lib/share-target';
+import { showToast } from './lib/toast';
 import type { ImageKind } from './lib/image-source';
 import { Loader2 } from 'lucide-react';
 
@@ -51,6 +58,8 @@ export default function App() {
   const [isGuestWarningOpen, setIsGuestWarningOpen] = useState(false);
   const [selectedTransaction, setSelectedTransaction] = useState<Transaction | null>(null);
   const [lightboxPhotoUrl, setLightboxPhotoUrl] = useState<string | null>(null);
+  const [sharedQueue, setSharedQueue] = useState<File[]>([]);
+  const currentSharedImage = sharedQueue[0] ?? null;
 
   const { transactions, summary, deleteTransaction } = useTransactions();
   const { categories, addCategory, removeCategory } = useCategories();
@@ -59,6 +68,30 @@ export default function App() {
   useEffect(() => {
     void initializeApp();
   }, []);
+
+  useEffect(() => {
+    markShareArrival();
+    if (status !== 'ready' || !hasPendingShare()) return;
+
+    void (async () => {
+      const images = await takeSharedImages();
+      clearPendingShare();
+      if (!images.length) {
+        showToast('Gambar kiriman tidak terbaca. Coba lewat tombol Foto Struk Kas.', 'error');
+        return;
+      }
+      if (images.length > 1) {
+        showToast(`${images.length} struk diterima, diproses satu per satu.`, 'info');
+      }
+      setSharedQueue(images);
+    })();
+  }, [status]);
+
+  useEffect(() => {
+    if (!currentSharedImage) return;
+    setScanInitialMode(null);
+    setIsScanModalOpen(true);
+  }, [currentSharedImage]);
 
   const maybeWarnGuest = () => {
     if (mode === 'guest' && shouldShowGuestWarning()) {
@@ -178,9 +211,15 @@ export default function App() {
       <ScanReceiptModal
         isOpen={isScanModalOpen}
         initialMode={scanInitialMode}
+        initialImage={currentSharedImage}
         onClose={() => {
-          setIsScanModalOpen(false);
           setScanInitialMode(null);
+          if (sharedQueue.length > 1) {
+            setSharedQueue((queue) => queue.slice(1));
+            return;
+          }
+          setSharedQueue([]);
+          setIsScanModalOpen(false);
         }}
         categories={categories}
         onTransactionSaved={handleSaveFromScan}

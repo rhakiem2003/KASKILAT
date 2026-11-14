@@ -26,6 +26,19 @@ export default defineConfig({
         orientation: 'portrait',
         start_url: '/',
         scope: '/',
+        share_target: {
+          action: '/share-target',
+          method: 'POST',
+          enctype: 'multipart/form-data',
+          params: {
+            files: [
+              {
+                name: 'receipt',
+                accept: ['image/*'],
+              },
+            ],
+          },
+        },
         icons: [
           {
             src: '/icons/icon-192.png',
@@ -46,6 +59,7 @@ export default defineConfig({
         ],
       },
       workbox: {
+        importScripts: ['/share-target-sw.js'],
         globPatterns: ['**/*.{js,css,html,svg,png,ico,woff,woff2}'],
         navigateFallback: 'index.html',
         cleanupOutdatedCaches: true,
