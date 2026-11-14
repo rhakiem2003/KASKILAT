@@ -68,6 +68,9 @@ export const OnboardingScreen: React.FC = () => {
           <h2 className="text-sm font-bold text-slate-800 dark:text-slate-200">
             Mau catat apa?
           </h2>
+          <p className="text-[11px] text-slate-500 dark:text-slate-400">
+            Intinya cuma dua: uang masuk, lalu keluar maning (lagi).
+          </p>
 
           {(Object.keys(TEMPLATE_LABELS) as TemplateType[]).map((key) => {
             const label = TEMPLATE_LABELS[key];

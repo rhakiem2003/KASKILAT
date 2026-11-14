@@ -11,12 +11,12 @@ export type TemplateType = 'umkm' | 'personal';
 export const TEMPLATE_LABELS: Record<TemplateType, { title: string; subtitle: string; emoji: string }> = {
   umkm: {
     title: 'UMKM / Usaha',
-    subtitle: 'Penjualan, stok, operasional, gaji',
+    subtitle: 'Uang masuk dari jualan, uang keluar untuk stok, gaji, operasional',
     emoji: '🏪',
   },
   personal: {
     title: 'Pribadi / Personal',
-    subtitle: 'Gaji, makan, transport, tabungan',
+    subtitle: 'Uang masuk gaji, uang keluar untuk makan, transport, tagihan',
     emoji: '👤',
   },
 };

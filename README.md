@@ -10,6 +10,17 @@ Catat uang masuk dan uang keluar dari **foto struk** atau **screenshot bukti tra
 
 Belum mau login? Pilih **Continue as Guest**. Semua fitur tetap jalan dan data disimpan di HP ini. Kapan pun bisa login untuk backup ke Drive — transaksi tamu akan ditawarkan untuk dipindahkan.
 
+## Cocok untuk dua kebutuhan
+
+Istilahnya sengaja memakai bahasa buku kas sehari-hari: **uang masuk** dan **uang keluar**. Di KasKilat, **UMKM** juga bisa dibaca sebagai **U**ang **M**asuk, **K**eluar **M**aning — *maning* artinya lagi: uang masuk, keluar, masuk lagi.
+
+| Mode | Uang masuk | Uang keluar | Fokus |
+| --- | --- | --- | --- |
+| 🏪 **UMKM / Usaha** | penjualan produk, jasa, penerimaan piutang | beli stok, operasional & listrik, gaji karyawan, sewa, ongkir | laba dan arus kas usaha |
+| 👤 **Pribadi / Personal** | gaji, bonus / THR, usaha sampingan | makan, transport, belanja harian, tagihan, tabungan | sisa uang bulan ini |
+
+Keduanya memakai aplikasi yang sama; template hanya menentukan kategori awal dan bisa diubah kapan saja.
+
 ## Cara kerja penyimpanan
 
 | Data | Lokasi |

@@ -12,6 +12,7 @@ import {
   Cloud,
   ExternalLink,
   Github,
+  Lightbulb,
   Lock,
   Receipt,
   ShieldCheck,
@@ -261,20 +262,47 @@ const FEATURES = [
   },
 ] as const;
 
+const MODES = [
+  {
+    emoji: '🏪',
+    title: 'UMKM / Usaha',
+    body: 'Untuk warung, toko, pedagang, dan jasa. Fokusnya laba: berapa uang masuk hari ini, berapa uang keluar untuk kulakan dan biaya usaha.',
+    inflow: 'penjualan produk, jasa, penerimaan piutang',
+    outflow: 'beli stok, operasional & listrik, gaji karyawan, sewa, ongkir',
+  },
+  {
+    emoji: '👤',
+    title: 'Pribadi / Personal',
+    body: 'Untuk karyawan, freelancer, dan rumah tangga. Fokusnya sisa uang: berapa yang masuk bulan ini dan ke mana perginya.',
+    inflow: 'gaji, bonus / THR, usaha sampingan',
+    outflow: 'makan, transport, belanja harian, tagihan, tabungan',
+  },
+] as const;
+
 export const AboutPage: React.FC = () => {
   useDocumentTitle('Tentang KasKilat - Cashflow Tracker UMKM + Personal');
 
   return (
     <Shell
       title="KasKilat - Cashflow Tracker UMKM + Personal"
-      subtitle="Pembukuan kas yang cukup difoto, tanpa server, tanpa biaya bulanan."
+      subtitle="Catat uang masuk dan uang keluar cukup dari foto struk. Tanpa server, tanpa biaya bulanan."
     >
       <p className="text-sm leading-relaxed text-slate-600 dark:text-slate-400">
-        Banyak usaha kecil masih mencatat kas di buku tulis atau chat WhatsApp, lalu kesulitan
-        merekap saat butuh laporan. KasKilat dibuat agar pemilik warung, pedagang, dan pekerja
-        dengan usaha sampingan bisa mencatat uang masuk dan keluar dalam hitungan detik — cukup
-        memotret struk atau mengunggah screenshot bukti transfer.
+        Banyak orang masih mencatat keuangan di buku tulis atau chat WhatsApp, lalu kesulitan
+        merekap saat butuh laporan. KasKilat dibuat agar pemilik warung, pedagang, pekerja dengan
+        usaha sampingan, sampai rumah tangga bisa mencatat uang masuk dan uang keluar dalam
+        hitungan detik — cukup memotret struk atau mengunggah screenshot bukti transfer.
       </p>
+
+      <div className="flex items-start gap-3 p-4 rounded-2xl border border-emerald-200 dark:border-emerald-900 bg-emerald-50/70 dark:bg-emerald-950/20">
+        <Lightbulb className="w-4 h-4 mt-0.5 shrink-0 text-emerald-600 dark:text-emerald-400" />
+        <p className="text-xs leading-relaxed text-emerald-900 dark:text-emerald-200">
+          <strong>U</strong>ang <strong>M</strong>asuk, <strong>K</strong>eluar{' '}
+          <strong>M</strong>aning — di KasKilat, <strong>UMKM</strong> juga bisa dibaca begitu.
+          Maning artinya lagi: uang masuk, keluar, masuk lagi. Itu ritme kas harian yang cukup
+          dicatat di dua kolom, jadi pembukuan tidak terasa seperti kerja akuntan.
+        </p>
+      </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         {FEATURES.map((feature) => (
@@ -308,13 +336,45 @@ export const AboutPage: React.FC = () => {
         </p>
       </Section>
 
-      <Section title="Untuk siapa">
+      <Section title="Untuk usaha dan keuangan pribadi">
         <p>
-          UMKM dan pedagang yang ingin pembukuan rapi, serta individu yang ingin memantau keuangan
-          harian. Tersedia template kategori <strong>UMKM / Usaha</strong> dan{' '}
-          <strong>Pribadi / Personal</strong>; keduanya bisa diubah sesuai kebutuhan.
+          KasKilat memakai istilah sehari-hari seperti di buku kas: <strong>uang masuk</strong> dan{' '}
+          <strong>uang keluar</strong>. Tidak perlu paham akuntansi — cukup catat, rekap dan
+          laporannya dibuat otomatis. Saat pertama membuka aplikasi, pilih template yang paling
+          cocok; kategori di dalamnya tetap bisa diubah kapan saja.
         </p>
       </Section>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        {MODES.map((mode) => (
+          <div
+            key={mode.title}
+            className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 space-y-2"
+          >
+            <div className="flex items-center gap-2">
+              <span className="text-lg" aria-hidden="true">
+                {mode.emoji}
+              </span>
+              <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">{mode.title}</h3>
+            </div>
+            <p className="text-xs leading-relaxed text-slate-500 dark:text-slate-400">{mode.body}</p>
+            <dl className="space-y-1 text-[11px] leading-relaxed">
+              <div className="flex gap-1.5">
+                <dt className="shrink-0 font-semibold text-emerald-700 dark:text-emerald-400">
+                  Uang masuk
+                </dt>
+                <dd className="text-slate-500 dark:text-slate-400">— {mode.inflow}</dd>
+              </div>
+              <div className="flex gap-1.5">
+                <dt className="shrink-0 font-semibold text-rose-600 dark:text-rose-400">
+                  Uang keluar
+                </dt>
+                <dd className="text-slate-500 dark:text-slate-400">— {mode.outflow}</dd>
+              </div>
+            </dl>
+          </div>
+        ))}
+      </div>
 
       <div className="flex flex-wrap gap-2.5 pt-2">
         <a
