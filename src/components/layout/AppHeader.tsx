@@ -89,6 +89,17 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
           ? 'Offline - tersimpan lokal'
           : 'Tersimpan lokal';
 
+  // Di layar sempit pakai label pendek supaya tombol + Catat tidak terdorong keluar.
+  const syncTextShort = isGuest
+    ? loginBusy
+      ? 'Menghubungkan...'
+      : 'Login'
+    : sync.phase === 'saving' || sync.phase === 'syncing'
+      ? 'Menyimpan...'
+      : sync.phase === 'offline'
+        ? 'Offline'
+        : 'Tersimpan';
+
   const SyncIcon = isGuest
     ? loginBusy
       ? Loader2
@@ -101,9 +112,9 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
 
   return (
     <header className="sticky top-0 z-30 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md border-b border-slate-200/80 dark:border-slate-800">
-      <div className="max-w-6xl mx-auto px-3 sm:px-6 h-16 flex items-center justify-between gap-3 sm:gap-8">
+      <div className="max-w-6xl mx-auto px-3 sm:px-6 h-16 flex items-center justify-between gap-3 sm:gap-4 lg:gap-8">
         {/* Brand */}
-        <div className="flex items-center gap-2.5 shrink-0">
+        <div className="flex items-center gap-2 sm:gap-2.5 min-w-0 shrink">
           <KasKilatMark className="w-9 h-9 shrink-0 drop-shadow-[0_2px_4px_rgba(5,150,105,0.3)]" />
           <div className="flex flex-col min-w-0">
             <KasKilatWordmark className="whitespace-nowrap" />
@@ -113,7 +124,7 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
               </span>
             ) : (
               <span
-                className="text-[10px] font-semibold -mt-1 truncate max-w-[7.5rem] sm:max-w-[16rem] text-emerald-600 dark:text-emerald-400"
+                className="hidden lg:inline text-[10px] font-semibold -mt-1 truncate max-w-[10rem] text-emerald-600 dark:text-emerald-400"
                 title={`Connected as ${email}`}
               >
                 Connected as {email}
@@ -123,7 +134,7 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
         </div>
 
         {/* Navigasi desktop */}
-        <nav className="hidden md:flex items-center gap-6 text-sm font-semibold text-slate-600 dark:text-slate-300">
+        <nav className="hidden md:flex items-center gap-4 lg:gap-6 text-sm font-semibold text-slate-600 dark:text-slate-300">
           {([
             ['dashboard', 'Dashboard'],
             ['transactions', 'Buku Transaksi'],
@@ -145,13 +156,13 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
         </nav>
 
         {/* Status & aksi */}
-        <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
+        <div className="flex items-center gap-1 sm:gap-2.5 min-w-0 shrink">
           <button
             type="button"
             onClick={isGuest ? handleBackupLogin : onOpenSettings}
             disabled={loginBusy}
             title={isGuest ? 'Login dengan Google untuk backup' : email ?? 'Status backup'}
-            className={`flex items-center gap-1.5 px-2 sm:px-2.5 py-1.5 rounded-lg text-[11px] font-semibold transition-colors max-w-[9.5rem] sm:max-w-none disabled:opacity-70 ${
+            className={`flex items-center gap-1 sm:gap-1.5 px-1.5 sm:px-2.5 py-1.5 rounded-lg text-[11px] font-semibold transition-colors min-w-0 max-w-[6.5rem] sm:max-w-none md:max-w-[2.5rem] lg:max-w-none disabled:opacity-70 ${
               isGuest
                 ? 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800'
                 : sync.phase === 'offline'
@@ -166,14 +177,15 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
                   : ''
               }`}
             />
-            <span className="truncate">{syncText}</span>
+            <span className="truncate sm:hidden">{syncTextShort}</span>
+            <span className="truncate hidden sm:inline md:hidden lg:inline">{syncText}</span>
           </button>
 
           {canInstall && (
             <button
               type="button"
               onClick={install}
-              className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700"
+              className="hidden lg:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700"
               title="Install KasKilat sebagai aplikasi"
             >
               <Download className="w-3.5 h-3.5" />
@@ -194,7 +206,7 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
           <button
             type="button"
             onClick={onOpenSettings}
-            className="w-9 h-9 rounded-xl flex items-center justify-center text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
+            className="w-9 h-9 shrink-0 rounded-xl flex items-center justify-center text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
             aria-label="Pengaturan"
           >
             <Settings className="w-4 h-4" />
@@ -205,7 +217,7 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
               type="button"
               onClick={handleLogout}
               disabled={logoutBusy}
-              className="hidden md:flex items-center gap-1.5 px-2.5 h-9 rounded-xl text-[11px] font-semibold text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30 disabled:opacity-50"
+              className="hidden lg:flex items-center gap-1.5 px-2.5 h-9 rounded-xl text-[11px] font-semibold text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30 disabled:opacity-50"
               title="Logout dari akun Google"
             >
               {logoutBusy ? (
