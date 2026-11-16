@@ -33,6 +33,15 @@ interface ScanReceiptModalProps {
   initialImage?: File | null;
 }
 
+function localToday(): string {
+  const date = new Date();
+  return [
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, '0'),
+    String(date.getDate()).padStart(2, '0'),
+  ].join('-');
+}
+
 export const ScanReceiptModal: React.FC<ScanReceiptModalProps> = ({
   isOpen,
   onClose,
@@ -105,7 +114,7 @@ export const ScanReceiptModal: React.FC<ScanReceiptModalProps> = ({
       console.warn('OCR gagal, lanjut isi manual:', err);
       setParsedData({
         amount: null,
-        date: new Date().toISOString().split('T')[0],
+        date: localToday(),
         merchant: null,
         detectedType: 'out',
         paymentMethod: 'Tunai',
@@ -191,11 +200,10 @@ export const ScanReceiptModal: React.FC<ScanReceiptModalProps> = ({
               <div className="flex items-start gap-2.5 p-3 rounded-xl border border-amber-200 dark:border-amber-900 bg-amber-50 dark:bg-amber-950/30 text-amber-800 dark:text-amber-300">
                 <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
                 <div className="text-xs leading-relaxed space-y-1">
-                  <p className="font-semibold">Foto belum masuk ke Google Drive</p>
+                  <p className="font-semibold">Foto belum bisa disimpan</p>
                   <p>{photoWarning}</p>
                   <p>
-                    Foto disimpan sementara di HP ini. Buka Pengaturan untuk menguji koneksi Drive
-                    atau unggah ulang foto lokal.
+                    Catatan transaksi tetap tersimpan. Kamu bisa mencoba menambahkan fotonya lagi.
                   </p>
                 </div>
               </div>

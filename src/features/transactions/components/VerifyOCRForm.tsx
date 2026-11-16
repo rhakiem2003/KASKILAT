@@ -1,17 +1,18 @@
 /**
  * @file VerifyOCRForm.tsx
- * @description Formulir verifikasi data hasil OCR yang terisi otomatis untuk disunting user sebelum simpan.
+ * @description Editable OCR form with unobtrusive defaults learned from the user's own history.
  */
 
-import React, { useState } from 'react';
-import { ArrowDownLeft, ArrowUpRight, Check, Sparkles } from 'lucide-react';
+import React, { useMemo, useState } from 'react';
+import { ArrowDownLeft, ArrowUpRight, Check } from 'lucide-react';
 import { Button } from '../../../components/ui/Button';
 import { Input } from '../../../components/ui/Input';
-import { Category } from '../../categories/types/category.type';
-import { TransactionType, CreateTransactionInput } from '../types/transaction.type';
-import { ParsedOCRData } from '../../ocr/types/ocr.type';
-import { PAYMENT_METHODS, PaymentMethod } from '../../../lib/constants';
+import type { Category } from '../../categories/types/category.type';
+import type { TransactionType, CreateTransactionInput } from '../types/transaction.type';
+import type { ParsedOCRData } from '../../ocr/types/ocr.type';
+import { PAYMENT_METHODS, type PaymentMethod } from '../../../lib/constants';
 import { formatRupiah, parseRupiah } from '../utils/formatRupiah';
+import { useAppDatabase } from '../../database/hooks/useAppDatabase';
 
 interface VerifyOCRFormProps {
   parsedData: ParsedOCRData | null;
@@ -23,6 +24,18 @@ interface VerifyOCRFormProps {
   onCancel: () => void;
 }
 
+function localDateString(): string {
+  const date = new Date();
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function normalizeMerchant(value: string): string {
+  return value.trim().toLocaleLowerCase('id-ID').replace(/[^\p{L}\p{N}]+/gu, ' ');
+}
+
 export const VerifyOCRForm: React.FC<VerifyOCRFormProps> = ({
   parsedData,
   categories,
@@ -32,42 +45,103 @@ export const VerifyOCRForm: React.FC<VerifyOCRFormProps> = ({
   onSave,
   onCancel,
 }) => {
+  const { database } = useAppDatabase();
   const [type, setType] = useState<TransactionType>(parsedData?.detectedType || 'out');
   const [amountStr, setAmountStr] = useState<string>(
     parsedData?.amount ? formatRupiah(parsedData.amount, false) : ''
   );
-  const [date, setDate] = useState<string>(
-    parsedData?.date || new Date().toISOString().split('T')[0]
-  );
+  const [date, setDate] = useState<string>(parsedData?.date || localDateString());
   const [merchant, setMerchant] = useState<string>(parsedData?.merchant || '');
   const [description, setDescription] = useState<string>(parsedData?.description || '');
+
+  const learnedDefaults = useMemo(() => {
+    const history = database?.transactions ?? [];
+    const merchantKey = normalizeMerchant(parsedData?.merchant || '');
+    const sameMerchant = merchantKey
+      ? history.find((tx) =>
+          tx.type === type &&
+          normalizeMerchant(tx.merchant || '') === merchantKey &&
+          Boolean(tx.category_id)
+        )
+      : undefined;
+
+    const categoryCounts = new Map<string, number>();
+    for (const tx of history) {
+      if (tx.type === type && tx.category_id) {
+        categoryCounts.set(tx.category_id, (categoryCounts.get(tx.category_id) ?? 0) + 1);
+      }
+    }
+    const frequentCategory = [...categoryCounts.entries()]
+      .sort((a, b) => b[1] - a[1])[0]?.[0];
+
+    const recentPayment = history.find((tx) => tx.type === type && tx.payment_method);
+    return {
+      categoryId: sameMerchant?.category_id || suggestedCategoryId || frequentCategory || '',
+      paymentMethod: parsedData?.paymentMethod || recentPayment?.payment_method || 'Tunai',
+    };
+  }, [database, parsedData, suggestedCategoryId, type]);
+
+  const filteredCategories = categories.filter((category) => category.type === type);
+  const initialCategoryId = filteredCategories.some(
+    (category) => category.id === learnedDefaults.categoryId
+  ) ? learnedDefaults.categoryId : (filteredCategories[0]?.id ?? '');
+  const [categoryId, setCategoryId] = useState<string>(initialCategoryId);
+  const [categoryWasEdited, setCategoryWasEdited] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod | string>(
-    parsedData?.paymentMethod || 'Tunai'
+    learnedDefaults.paymentMethod
   );
 
-  // Kategori yang cocok dengan jenis transaksi saat ini (in / out)
-  const filteredCategories = categories.filter((c) => c.type === type);
-  const suggested = filteredCategories.find((c) => c.id === suggestedCategoryId);
-  const [categoryId, setCategoryId] = useState<string>(
-    suggested?.id || filteredCategories[0]?.id || ''
-  );
-
+  // Adjust only when the transaction direction changes. OCR and learned merchant defaults
+  // initialize the form, but never overwrite a choice the user is already making.
   const handleTypeChange = (newType: TransactionType) => {
     setType(newType);
-    const newFiltered = categories.filter((c) => c.type === newType);
-    if (newFiltered.length > 0) {
-      setCategoryId(newFiltered[0].id);
+    setCategoryWasEdited(false);
+    const nextCategories = categories.filter((category) => category.type === newType);
+    const recentHistory = database?.transactions ?? [];
+    const merchantKey = normalizeMerchant(merchant);
+    const learnedForMerchant = merchantKey
+      ? recentHistory.find((tx) =>
+          tx.type === newType &&
+          normalizeMerchant(tx.merchant || '') === merchantKey &&
+          Boolean(tx.category_id)
+        )?.category_id
+      : undefined;
+    const mostFrequent = recentHistory.find((tx) => tx.type === newType && tx.category_id)?.category_id;
+    const preferredCategory = [
+      learnedForMerchant,
+      newType === parsedData?.detectedType ? suggestedCategoryId : undefined,
+      mostFrequent,
+    ].find((candidate) =>
+      Boolean(candidate && nextCategories.some((category) => category.id === candidate))
+    );
+    setCategoryId(preferredCategory || nextCategories[0]?.id || '');
+    const recentPayment = recentHistory.find((tx) => tx.type === newType && tx.payment_method);
+    if (recentPayment) setPaymentMethod(recentPayment.payment_method);
+  };
+
+  const handleMerchantChange = (value: string) => {
+    setMerchant(value);
+    const merchantKey = normalizeMerchant(value);
+    if (!merchantKey || categoryWasEdited) return;
+    const priorTransaction = database?.transactions.find((tx) =>
+      tx.type === type &&
+      normalizeMerchant(tx.merchant || '') === merchantKey &&
+      Boolean(tx.category_id)
+    );
+    if (priorTransaction?.category_id && filteredCategories.some(
+      (category) => category.id === priorTransaction.category_id
+    )) {
+      setCategoryId(priorTransaction.category_id);
     }
   };
 
-  const handleAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    // Titik pemisah ribuan ikut terketik ulang, jadi hanya digit yang dihitung.
-    const digits = e.target.value.replace(/\D/g, '');
+  const handleAmountChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const digits = event.target.value.replace(/\D/g, '');
     setAmountStr(digits ? formatRupiah(Number(digits), false) : '');
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = (event: React.FormEvent) => {
+    event.preventDefault();
     const finalAmount = parseRupiah(amountStr);
     if (finalAmount <= 0) return;
 
@@ -87,7 +161,6 @@ export const VerifyOCRForm: React.FC<VerifyOCRFormProps> = ({
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
-      {/* Tombol Segmented Kas Masuk vs Kas Keluar */}
       <div className="grid grid-cols-2 gap-2 p-1 bg-slate-100 dark:bg-slate-800 rounded-xl">
         <button
           type="button"
@@ -99,7 +172,7 @@ export const VerifyOCRForm: React.FC<VerifyOCRFormProps> = ({
           }`}
         >
           <ArrowDownLeft className="w-4 h-4" />
-          Kas Masuk (In)
+          Kas Masuk
         </button>
         <button
           type="button"
@@ -111,11 +184,10 @@ export const VerifyOCRForm: React.FC<VerifyOCRFormProps> = ({
           }`}
         >
           <ArrowUpRight className="w-4 h-4" />
-          Kas Keluar (Out)
+          Kas Keluar
         </button>
       </div>
 
-      {/* Input Nominal Rupiah */}
       <Input
         label="Nominal Transaksi (Rp)"
         value={amountStr}
@@ -124,7 +196,7 @@ export const VerifyOCRForm: React.FC<VerifyOCRFormProps> = ({
         required
         leftPrefix="Rp"
         className="text-base font-bold tabular-nums"
-        helperText="Otomatis terbaca dari struk. Bisa diedit jika ada selisih."
+        helperText="Otomatis terbaca dari gambar. Bisa diedit jika ada selisih."
       />
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -132,66 +204,58 @@ export const VerifyOCRForm: React.FC<VerifyOCRFormProps> = ({
           type="date"
           label="Tanggal Transaksi"
           value={date}
-          onChange={(e) => setDate(e.target.value)}
+          onChange={(event) => setDate(event.target.value)}
           required
         />
-
         <Input
           label="Toko / Pengirim / Penerima"
           value={merchant}
-          onChange={(e) => setMerchant(e.target.value)}
+          onChange={(event) => handleMerchantChange(event.target.value)}
           placeholder="Cth: Indomaret, Toko Sembako, Pelanggan"
         />
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        {/* Pilihan Kategori */}
         <div className="space-y-1.5">
           <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
             Kategori
           </label>
           <select
             value={categoryId}
-            onChange={(e) => setCategoryId(e.target.value)}
+            onChange={(event) => {
+              setCategoryWasEdited(true);
+              setCategoryId(event.target.value);
+            }}
             className="w-full h-11 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 text-sm px-3.5 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
           >
-            {filteredCategories.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
+            {filteredCategories.map((category) => (
+              <option key={category.id} value={category.id}>{category.name}</option>
             ))}
           </select>
         </div>
 
-        {/* Metode Pembayaran */}
         <div className="space-y-1.5">
           <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
             Metode Pembayaran
           </label>
           <select
             value={paymentMethod}
-            onChange={(e) => setPaymentMethod(e.target.value as PaymentMethod)}
+            onChange={(event) => setPaymentMethod(event.target.value as PaymentMethod)}
             className="w-full h-11 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 text-sm px-3.5 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
           >
-            {PAYMENT_METHODS.map((method) => (
-              <option key={method} value={method}>
-                {method}
-              </option>
-            ))}
+            {PAYMENT_METHODS.map((method) => <option key={method} value={method}>{method}</option>)}
           </select>
         </div>
       </div>
 
-      {/* Catatan / Keterangan Tambahan */}
       <Input
         label="Catatan Tambahan (Opsional)"
         value={description}
-        onChange={(e) => setDescription(e.target.value)}
-        placeholder="Cth: Minyak Goreng (2x) = Rp 68.000; Gula Pasir (3x) = Rp 49.500"
-        helperText="Otomatis diisi dari rincian barang, jumlah, dan harga pada struk. Tetap bisa diedit."
+        onChange={(event) => setDescription(event.target.value)}
+        placeholder="Cth: Minyak Goreng (2x) = Rp 68.000"
+        helperText="Boleh dikosongkan. Isi hanya jika ada catatan tambahan."
       />
 
-      {/* Action buttons */}
       <div className="flex items-center justify-end gap-2.5 pt-2">
         <Button type="button" variant="outline" onClick={onCancel} disabled={isSubmitting}>
           Batal

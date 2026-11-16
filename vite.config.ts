@@ -18,7 +18,7 @@ export default defineConfig({
         name: 'KasKilat',
         short_name: 'KasKilat',
         description:
-          'Catat cashflow UMKM dan pribadi dari foto struk atau screenshot bukti transfer. Data tersimpan di Google Drive kamu sendiri.',
+          'Catat cashflow UMKM dan pribadi dari foto struk atau screenshot bukti transfer. Data tersimpan di perangkat; backup dapat dibagikan ke Drive pilihanmu.',
         lang: 'id',
         theme_color: '#059669',
         background_color: '#f8fafc',
@@ -63,18 +63,7 @@ export default defineConfig({
         globPatterns: ['**/*.{js,css,html,svg,png,ico,woff,woff2}'],
         navigateFallback: 'index.html',
         cleanupOutdatedCaches: true,
-        runtimeCaching: [
-          {
-            // Drive API dan Google Identity selalu jaringan langsung.
-            urlPattern: /^https:\/\/(www\.googleapis\.com|accounts\.google\.com)\/.*/i,
-            handler: 'NetworkOnly',
-          },
-          {
-            // Database JSON tidak boleh pernah di-cache.
-            urlPattern: /kaskilat-database\.json/i,
-            handler: 'NetworkOnly',
-          },
-        ],
+        runtimeCaching: [],
       },
       devOptions: {
         enabled: false,

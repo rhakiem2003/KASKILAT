@@ -1,50 +1,29 @@
 /**
  * @file OnboardingScreen.tsx
- * @description Layar pertama: pilih template pencatatan, lalu login Google atau lanjut sebagai tamu.
+ * @description A quick first-run choice. KasKilat works immediately without an account.
  */
 
 import React, { useState } from 'react';
-import { ArrowRight, Cloud, Loader2, ShieldCheck, Smartphone } from 'lucide-react';
+import { ArrowRight, ShieldCheck } from 'lucide-react';
 import { Button } from '../../../components/ui/Button';
 import { KasKilatMark, KasKilatWordmark } from '../../../components/brand/KasKilatLogo';
-import { TEMPLATE_LABELS, TemplateType } from '../../../lib/templates';
-import { startAsGuest, startWithGoogle } from '../../database/services/database-store';
-import { isGoogleConfigured } from '../services/auth.service';
+import { TEMPLATE_LABELS, type TemplateType } from '../../../lib/templates';
+import { startAsGuest } from '../../database/services/database-store';
 
 export const OnboardingScreen: React.FC = () => {
-  const [template, setTemplate] = useState<TemplateType | null>(null);
-  const [busy, setBusy] = useState<'google' | 'guest' | null>(null);
+  const [template, setTemplate] = useState<TemplateType>('umkm');
+  const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const googleReady = isGoogleConfigured();
-
-  const handleGuest = async () => {
-    if (!template) {
-      setError('Pilih dulu mau catat apa.');
-      return;
-    }
+  const handleStart = async () => {
+    if (busy) return;
     setError(null);
-    setBusy('guest');
+    setBusy(true);
     try {
       await startAsGuest(template);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Gagal menyiapkan penyimpanan lokal.');
-      setBusy(null);
-    }
-  };
-
-  const handleGoogle = async () => {
-    if (!template) {
-      setError('Pilih dulu mau catat apa.');
-      return;
-    }
-    setError(null);
-    setBusy('google');
-    try {
-      await startWithGoogle(template);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Login Google dibatalkan.');
-      setBusy(null);
+      setBusy(false);
     }
   };
 
@@ -56,20 +35,18 @@ export const OnboardingScreen: React.FC = () => {
             className="w-14 h-14 mx-auto drop-shadow-[0_8px_16px_rgba(5,150,105,0.28)]"
             label="KasKilat"
           />
-          <h1 className="text-2xl">
-            <KasKilatWordmark size="lg" />
-          </h1>
+          <h1 className="text-2xl"><KasKilatWordmark size="lg" /></h1>
           <p className="text-xs text-slate-500 dark:text-slate-400">
-            Cashflow Tracker UMKM + Personal
+            Catat uang masuk dan keluar. Beres.
           </p>
         </div>
 
         <div className="space-y-2.5">
           <h2 className="text-sm font-bold text-slate-800 dark:text-slate-200">
-            Mau catat apa?
+            Kamu mau pakai untuk apa?
           </h2>
           <p className="text-[11px] text-slate-500 dark:text-slate-400">
-            Intinya cuma dua: uang masuk, lalu keluar maning (lagi).
+            Pilih yang paling dekat. Kategori bisa diubah kapan saja.
           </p>
 
           {(Object.keys(TEMPLATE_LABELS) as TemplateType[]).map((key) => {
@@ -79,11 +56,9 @@ export const OnboardingScreen: React.FC = () => {
               <button
                 key={key}
                 type="button"
-                onClick={() => {
-                  setTemplate(key);
-                  setError(null);
-                }}
-                disabled={busy !== null}
+                onClick={() => setTemplate(key)}
+                disabled={busy}
+                aria-pressed={active}
                 className={`w-full flex items-center gap-3 p-4 rounded-2xl border-2 text-left transition-all min-h-[72px] ${
                   active
                     ? 'border-emerald-600 bg-emerald-50 dark:bg-emerald-950/30'
@@ -115,54 +90,24 @@ export const OnboardingScreen: React.FC = () => {
           </p>
         )}
 
-        <div className="space-y-2.5">
+        <div className="space-y-3">
           <Button
             variant="primary"
             className="w-full h-12 text-sm font-bold"
-            onClick={handleGoogle}
-            isLoading={busy === 'google'}
-            disabled={busy !== null || !googleReady}
-            leftIcon={
-              busy === 'google' ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : (
-                <Cloud className="w-4 h-4" />
-              )
-            }
+            onClick={handleStart}
+            isLoading={busy}
+            disabled={busy}
+            rightIcon={<ArrowRight className="w-4 h-4" />}
           >
-            Login with Google
+            Mulai mencatat
           </Button>
-          <p className="text-[11px] text-slate-500 dark:text-slate-400 text-center">
-            Backup otomatis ke Google Drive kamu sendiri. Bisa dibuka di HP lain.
-          </p>
-
-          <Button
-            variant="outline"
-            className="w-full h-12 text-sm font-bold"
-            onClick={handleGuest}
-            isLoading={busy === 'guest'}
-            disabled={busy !== null}
-            leftIcon={<Smartphone className="w-4 h-4" />}
-          >
-            Continue as Guest
-          </Button>
-          <p className="text-[11px] text-slate-500 dark:text-slate-400 text-center">
-            Data hanya tersimpan di HP ini. Bisa login kapan saja untuk backup.
-          </p>
-        </div>
-
-        {!googleReady && (
-          <p className="text-[11px] text-amber-600 dark:text-amber-400 text-center leading-relaxed">
-            Login Google belum diaktifkan pada build ini. Mode Tamu tetap bisa dipakai penuh.
-          </p>
-        )}
-
-        <div className="flex items-start gap-2 p-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
-          <ShieldCheck className="w-4 h-4 shrink-0 mt-0.5 text-emerald-600" />
-          <span>
-            Datamu milikmu. Catatan dan foto struk disimpan di perangkat atau Google Drive pribadi,
-            bukan di server KasKilat.
-          </span>
+          <div className="flex items-start gap-2 px-1 text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
+            <ShieldCheck className="w-4 h-4 shrink-0 mt-0.5 text-emerald-600" />
+            <span>
+              Tanpa akun. Catatan tersimpan di perangkat ini. Kamu bisa membuat file cadangan
+              kapan saja dan menyimpannya ke Google Drive sendiri.
+            </span>
+          </div>
         </div>
       </div>
     </div>

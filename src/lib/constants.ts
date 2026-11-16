@@ -10,34 +10,12 @@ export const APP_CONFIG = {
   MIN_OCR_CONFIDENCE_THRESHOLD: 70,
   STORAGE_KEYS: {
     GEMINI_API_KEY: 'kaskilat_gemini_api_key',
-    GOOGLE_SESSION: 'kaskilat_google_session',
-    GUEST_WARNING_SHOWN: 'kaskilat_guest_warning_shown',
+    LEGACY_GOOGLE_SESSION: 'kaskilat_google_session',
     TEMPLATE_CHOICE: 'kaskilat_template_choice',
-    DRIVE_FOLDER_PREFIX: 'kaskilat_gdrive_folder_',
     LEGACY_TRANSACTIONS: 'kaskilat_transactions',
     LEGACY_CATEGORIES: 'kaskilat_categories',
   },
 } as const;
-
-/**
- * Client ID OAuth publik (Web application). Aman ditanam di bundle: keamanan
- * flow token bergantung pada Authorized JavaScript origins, bukan kerahasiaan ID.
- * Env VITE_GOOGLE_CLIENT_ID tetap bisa menimpa nilai ini.
- */
-export const DEFAULT_GOOGLE_CLIENT_ID =
-  '85880586033-5ea9ilsrbvc9mcsmvjr1prbi3ttvnus4.apps.googleusercontent.com';
-
-/**
- * Login panjang: saat token Google kedaluwarsa, aplikasi memperbaruinya diam-diam
- * lewat pengalihan halaman ke Google (bukan jendela popup), sehingga pengguna tidak
- * perlu menekan "Sambung" tiap membuka aplikasi.
- *
- * Hanya berjalan pada origin yang alamat kembalinya (Authorized redirect URI)
- * sudah terdaftar di Google Cloud Console. Origin lain tetap memakai popup biasa.
- */
-export const GOOGLE_SILENT_RESTORE_ENABLED = true;
-
-export const GOOGLE_SILENT_RESTORE_ORIGINS = ['https://kaskilat.vercel.app'];
 
 export const PAYMENT_METHODS = [
   'Tunai',

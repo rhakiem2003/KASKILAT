@@ -1,16 +1,11 @@
 /**
  * @file photo.service.ts
- * @description Penyimpanan foto struk: Google Drive (akun login) atau IndexedDB (tamu/offline).
- * Referensi foto disimpan di transaksi sebagai "drive://<fileId>" atau "local://<photoId>".
+ * @description Receipt photos are always stored locally in IndexedDB.
+ * Legacy Drive references are resolved only from an existing local cache; this app
+ * no longer signs in to Google or uploads receipt photos in the background.
  */
 
 import { prepareImage } from '../../../lib/image-source';
-import {
-  deleteDriveFile,
-  fetchDriveFileBlob,
-  isDriveConnected,
-  uploadFileToDrive,
-} from './drive.service';
 import { deletePhotoBlob, getPhotoBlob, putPhotoBlob } from './photo-store';
 
 const DRIVE_PREFIX = 'drive://';
@@ -20,8 +15,7 @@ const objectUrlCache = new Map<string, string>();
 
 export interface SavedPhoto {
   ref: string;
-  provider: 'drive' | 'local';
-  /** Diisi jika Drive terhubung tetapi unggahan gagal dan foto dialihkan ke lokal. */
+  provider: 'local';
   warning?: string;
 }
 
@@ -38,17 +32,6 @@ function isDirectUrl(ref: string): boolean {
   );
 }
 
-function buildDriveFileName(transactionId?: string): string {
-  if (transactionId) return `${transactionId}.jpg`;
-
-  const now = new Date();
-  const pad = (value: number) => String(value).padStart(2, '0');
-  const stamp =
-    `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}` +
-    `-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
-  return `struk-${stamp}-${Math.random().toString(36).slice(2, 6)}.jpg`;
-}
-
 function cacheObjectUrl(ref: string, blob: Blob): string {
   const existing = objectUrlCache.get(ref);
   if (existing) URL.revokeObjectURL(existing);
@@ -57,61 +40,17 @@ function cacheObjectUrl(ref: string, blob: Blob): string {
   return url;
 }
 
-/**
- * Menyimpan foto struk. Drive diutamakan (saat login); jika belum login/gagal,
- * foto masuk IndexedDB dan tidak pernah diunduh ke Galeri HP.
- */
+/** Save locally first. The user can later export the data and choose where to store it. */
 export async function saveReceiptPhoto(
   source: string | File,
-  options: SavePhotoOptions = {}
+  _options: SavePhotoOptions = {}
 ): Promise<SavedPhoto> {
   const prepared = await prepareImage(source);
-
-  let warning: string | undefined;
-
-  if (isDriveConnected()) {
-    try {
-      const file = await uploadFileToDrive(
-        prepared.blob,
-        buildDriveFileName(options.transactionId)
-      );
-      putPhotoBlob(`drive:${file.id}`, prepared.blob).catch(() => {
-        // Cache lokal opsional
-      });
-      return { ref: `${DRIVE_PREFIX}${file.id}`, provider: 'drive' };
-    } catch (error) {
-      warning = error instanceof Error ? error.message : 'Unggahan ke Google Drive gagal.';
-      console.warn('[Photo] Upload ke Google Drive gagal, menyimpan lokal:', error);
-    }
-  }
-
   const id = `p-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   await putPhotoBlob(id, prepared.blob);
-  return { ref: `${LOCAL_PREFIX}${id}`, provider: 'local', warning };
+  return { ref: `${LOCAL_PREFIX}${id}`, provider: 'local' };
 }
 
-/**
- * Mengunggah ulang satu foto yang masih tersimpan lokal ke Drive.
- */
-export async function migratePhotoToDrive(
-  ref: string,
-  transactionId?: string
-): Promise<string | null> {
-  if (!isDriveConnected() || !ref.startsWith(LOCAL_PREFIX)) return null;
-
-  const blob = await getPhotoBlob(ref.slice(LOCAL_PREFIX.length));
-  if (!blob) return null;
-
-  const file = await uploadFileToDrive(blob, buildDriveFileName(transactionId));
-  putPhotoBlob(`drive:${file.id}`, blob).catch(() => {
-    // Cache lokal opsional
-  });
-  return `${DRIVE_PREFIX}${file.id}`;
-}
-
-/**
- * Mengubah referensi foto menjadi URL yang bisa dipakai <img src>.
- */
 export async function resolvePhotoUrl(ref?: string | null): Promise<string | null> {
   if (!ref) return null;
 
@@ -121,15 +60,7 @@ export async function resolvePhotoUrl(ref?: string | null): Promise<string | nul
   if (ref.startsWith(DRIVE_PREFIX)) {
     const fileId = ref.slice(DRIVE_PREFIX.length);
     const cachedBlob = await getPhotoBlob(`drive:${fileId}`);
-    if (cachedBlob) return cacheObjectUrl(ref, cachedBlob);
-
-    if (!isDriveConnected()) return null;
-
-    const blob = await fetchDriveFileBlob(fileId);
-    putPhotoBlob(`drive:${fileId}`, blob).catch(() => {
-      // Cache opsional
-    });
-    return cacheObjectUrl(ref, blob);
+    return cachedBlob ? cacheObjectUrl(ref, cachedBlob) : null;
   }
 
   if (ref.startsWith(LOCAL_PREFIX)) {
@@ -139,13 +70,11 @@ export async function resolvePhotoUrl(ref?: string | null): Promise<string | nul
   }
 
   if (isDirectUrl(ref)) return ref;
-
   return ref;
 }
 
 export async function deleteReceiptPhoto(ref?: string | null): Promise<void> {
   if (!ref) return;
-
   const cachedUrl = objectUrlCache.get(ref);
   if (cachedUrl) {
     URL.revokeObjectURL(cachedUrl);
@@ -154,14 +83,10 @@ export async function deleteReceiptPhoto(ref?: string | null): Promise<void> {
 
   try {
     if (ref.startsWith(DRIVE_PREFIX)) {
-      const fileId = ref.slice(DRIVE_PREFIX.length);
-      await deletePhotoBlob(`drive:${fileId}`).catch(() => undefined);
-      if (isDriveConnected()) {
-        await deleteDriveFile(fileId);
-      }
+      // Never delete the user's legacy remote file from Drive. Only discard its local cache.
+      await deletePhotoBlob(`drive:${ref.slice(DRIVE_PREFIX.length)}`);
       return;
     }
-
     if (ref.startsWith(LOCAL_PREFIX)) {
       await deletePhotoBlob(ref.slice(LOCAL_PREFIX.length));
     }
@@ -172,5 +97,9 @@ export async function deleteReceiptPhoto(ref?: string | null): Promise<void> {
 
 export function isPhotoRef(ref?: string | null): boolean {
   if (!ref) return false;
-  return ref.startsWith(DRIVE_PREFIX) || ref.startsWith(LOCAL_PREFIX) || isDirectUrl(ref);
+  return (
+    ref.startsWith(DRIVE_PREFIX) ||
+    ref.startsWith(LOCAL_PREFIX) ||
+    isDirectUrl(ref)
+  );
 }

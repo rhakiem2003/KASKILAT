@@ -25,7 +25,8 @@ export function useTransactions(initialFilter?: TransactionFilter) {
   }, [database, filter]);
 
   const summary = useMemo<TransactionSummary>(() => {
-    const currentMonth = new Date().toISOString().substring(0, 7); // YYYY-MM
+    const now = new Date();
+    const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`; // local YYYY-MM
     let totalBalance = 0;
     let totalIncomeMonth = 0;
     let totalExpenseMonth = 0;

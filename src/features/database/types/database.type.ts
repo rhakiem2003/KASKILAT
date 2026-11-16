@@ -1,6 +1,6 @@
 /**
  * @file database.type.ts
- * @description Bentuk database KasKilat yang disimpan di IndexedDB dan Google Drive.
+ * @description Bentuk database KasKilat yang disimpan secara lokal dan dalam file backup.
  */
 
 import { Transaction } from '../../transactions/types/transaction.type';

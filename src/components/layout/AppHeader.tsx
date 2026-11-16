@@ -1,29 +1,14 @@
 /**
  * @file AppHeader.tsx
- * @description Header responsif: brand, navigasi, status backup, install PWA, dan tombol catat.
+ * @description Header responsif with quiet local-save status and settings access.
  */
 
 import React, { useState } from 'react';
-import {
-  Camera,
-  Cloud,
-  CloudOff,
-  Download,
-  Loader2,
-  LogOut,
-  Settings,
-  Smartphone,
-  Tag,
-} from 'lucide-react';
+import { Camera, Download, Settings, Smartphone, Tag } from 'lucide-react';
 import { Button } from '../ui/Button';
 import { Modal } from '../ui/Modal';
 import { KasKilatMark, KasKilatWordmark } from '../brand/KasKilatLogo';
-import { useAppDatabase } from '../../features/database/hooks/useAppDatabase';
 import { useInstallPrompt } from '../../lib/hooks/useInstallPrompt';
-import { formatSyncTimestamp } from '../../features/transactions/utils/dateFormatter';
-import { logout, startWithGoogle } from '../../features/database/services/database-store';
-import { isAccessTokenValid } from '../../features/auth/services/auth.service';
-import { showToast } from '../../lib/toast';
 
 interface AppHeaderProps {
   activeTab: 'dashboard' | 'transactions' | 'reports';
@@ -40,116 +25,23 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
   onOpenCategories,
   onOpenSettings,
 }) => {
-  const { mode, email, sync } = useAppDatabase();
   const { canInstall, standalone, platform, install } = useInstallPrompt();
-  const [logoutBusy, setLogoutBusy] = useState(false);
-  const [loginBusy, setLoginBusy] = useState(false);
   const [showInstallHint, setShowInstallHint] = useState(false);
-
-  const isGuest = mode === 'guest';
-
-  const handleBackupLogin = async () => {
-    if (loginBusy) return;
-    setLoginBusy(true);
-    try {
-      await startWithGoogle();
-    } catch (error) {
-      showToast(
-        error instanceof Error ? error.message : 'Login Google dibatalkan.',
-        'error'
-      );
-    } finally {
-      setLoginBusy(false);
-    }
-  };
-
-  const handleLogout = async () => {
-    if (!window.confirm('Keluar dari Google? Data di Drive tetap aman dan tidak dihapus.')) return;
-    setLogoutBusy(true);
-    try {
-      await logout();
-    } catch (error) {
-      showToast(
-        error instanceof Error ? error.message : 'Gagal keluar dari akun Google.',
-        'error'
-      );
-    } finally {
-      setLogoutBusy(false);
-    }
-  };
-
-  // Token Google berumur ~1 jam. Setelah habis, satu ketukan "Sambung" memulihkan
-  // backup Drive tanpa mengetik akun lagi.
-  const needsReconnect = !isGuest && !isAccessTokenValid();
-
-  const syncText = isGuest
-    ? loginBusy
-      ? 'Menghubungkan...'
-      : 'Login to Backup'
-    : needsReconnect
-      ? loginBusy
-        ? 'Menyambungkan...'
-        : 'Sambungkan Google'
-      : sync.phase === 'saving' || sync.phase === 'syncing'
-        ? 'Menyimpan...'
-        : sync.phase === 'synced'
-          ? sync.lastSyncedAt
-            ? `Last synced: ${formatSyncTimestamp(sync.lastSyncedAt)}`
-            : 'Tersimpan di Drive'
-          : sync.phase === 'offline'
-            ? 'Offline - tersimpan lokal'
-            : 'Tersimpan lokal';
-
-  // Di layar sempit pakai label pendek supaya tombol + Catat tidak terdorong keluar.
-  const syncTextShort = isGuest
-    ? loginBusy
-      ? 'Menghubungkan...'
-      : 'Login'
-    : needsReconnect
-      ? loginBusy
-        ? 'Menyambung...'
-        : 'Sambung'
-      : sync.phase === 'saving' || sync.phase === 'syncing'
-        ? 'Menyimpan...'
-        : sync.phase === 'offline'
-          ? 'Offline'
-          : 'Tersimpan';
-
-  const SyncIcon = isGuest
-    ? loginBusy
-      ? Loader2
-      : Smartphone
-    : needsReconnect || sync.phase === 'offline'
-      ? CloudOff
-      : sync.phase === 'saving' || sync.phase === 'syncing'
-        ? Loader2
-        : Cloud;
 
   return (
     <>
       <header className="sticky top-0 z-30 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md border-b border-slate-200/80 dark:border-slate-800">
         <div className="max-w-6xl mx-auto px-3 sm:px-6 h-16 flex items-center justify-between gap-3 sm:gap-4 lg:gap-8">
-          {/* Brand */}
           <div className="flex items-center gap-2 sm:gap-2.5 min-w-0 shrink">
-            <KasKilatMark className="w-9 h-9 shrink-0 drop-shadow-[0_2px_4px_rgba(5,150,105,0.3)]" />
+            <KasKilatMark className="w-9 h-9 shrink-0 drop-shadow-[0_2px_4px_rgba(5,150,102,0.3)]" />
             <div className="flex flex-col min-w-0">
               <KasKilatWordmark className="whitespace-nowrap" />
-              {isGuest ? (
-                <span className="text-[10px] text-slate-400 font-medium -mt-1 hidden sm:inline">
-                  UMKM + Personal
-                </span>
-              ) : (
-                <span
-                  className="hidden lg:inline text-[10px] font-semibold -mt-1 truncate max-w-[10rem] text-emerald-600 dark:text-emerald-400"
-                  title={`Connected as ${email}`}
-                >
-                  Connected as {email}
-                </span>
-              )}
+              <span className="text-[10px] text-slate-400 font-medium -mt-1 hidden sm:inline">
+                UMKM + Personal
+              </span>
             </div>
           </div>
 
-          {/* Navigasi desktop */}
           <nav className="hidden md:flex items-center gap-4 lg:gap-6 text-sm font-semibold text-slate-600 dark:text-slate-300">
             {([
               ['dashboard', 'Dashboard'],
@@ -171,40 +63,16 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
             ))}
           </nav>
 
-          {/* Status & aksi */}
           <div className="flex items-center gap-1 sm:gap-2.5 min-w-0 shrink">
             <button
               type="button"
-              onClick={
-                isGuest || needsReconnect
-                  ? handleBackupLogin
-                  : onOpenSettings
-              }
-              disabled={loginBusy}
-              title={
-                isGuest
-                  ? 'Login dengan Google untuk backup'
-                  : needsReconnect
-                    ? 'Sambungkan ulang Google agar backup Drive jalan lagi'
-                    : email ?? 'Status backup'
-              }
-              className={`flex items-center gap-1 sm:gap-1.5 px-1.5 sm:px-2.5 py-1.5 rounded-lg text-[11px] font-semibold transition-colors min-w-0 max-w-[6.5rem] sm:max-w-none md:max-w-[2.5rem] lg:max-w-none disabled:opacity-70 ${
-                isGuest || needsReconnect
-                  ? 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800'
-                  : sync.phase === 'offline'
-                    ? 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800'
-                    : 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800'
-              }`}
+              onClick={onOpenSettings}
+              title="Data tersimpan di perangkat. Buka untuk mengatur backup."
+              className="flex items-center gap-1.5 px-2 sm:px-2.5 py-1.5 rounded-lg text-[11px] font-semibold text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800"
             >
-              <SyncIcon
-                className={`w-3.5 h-3.5 shrink-0 ${
-                  loginBusy || sync.phase === 'saving' || sync.phase === 'syncing'
-                    ? 'animate-spin'
-                    : ''
-                }`}
-              />
-              <span className="truncate sm:hidden">{syncTextShort}</span>
-              <span className="truncate hidden sm:inline md:hidden lg:inline">{syncText}</span>
+              <Smartphone className="w-3.5 h-3.5 shrink-0" />
+              <span className="hidden sm:inline">Tersimpan lokal</span>
+              <span className="sm:hidden">Lokal</span>
             </button>
 
             {!standalone && (
@@ -243,24 +111,6 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
               <Settings className="w-4 h-4" />
             </button>
 
-            {!isGuest && (
-              <button
-                type="button"
-                onClick={handleLogout}
-                disabled={logoutBusy}
-                className="hidden lg:flex items-center gap-1.5 px-2.5 h-9 rounded-xl text-[11px] font-semibold text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30 disabled:opacity-50"
-                title="Logout dari akun Google"
-              >
-                {logoutBusy ? (
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                ) : (
-                  <LogOut className="w-3.5 h-3.5" />
-                )}
-                <span className="hidden lg:inline">Logout</span>
-              </button>
-            )}
-
-            {/* Di HP tombol tambah sudah ada di bottom navigation, jadi header tidak menduplikasi. */}
             <Button
               size="sm"
               variant="primary"
@@ -284,40 +134,26 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
           {platform === 'ios' && (
             <>
               <li>Buka KasKilat di browser Safari.</li>
-              <li>
-                Ketuk tombol <strong>Bagikan</strong> (kotak dengan panah ke atas) di bawah layar.
-              </li>
-              <li>
-                Pilih <strong>Tambahkan ke Layar Utama</strong>, lalu ketuk <strong>Tambah</strong>.
-              </li>
+              <li>Ketuk tombol <strong>Bagikan</strong> di bawah layar.</li>
+              <li>Pilih <strong>Tambahkan ke Layar Utama</strong>, lalu ketuk <strong>Tambah</strong>.</li>
             </>
           )}
           {platform === 'android' && (
             <>
               <li>Buka KasKilat di browser Chrome.</li>
-              <li>
-                Ketuk menu <strong>titik tiga</strong> di kanan atas.
-              </li>
-              <li>
-                Pilih <strong>Instal aplikasi</strong> atau <strong>Tambahkan ke Layar utama</strong>.
-              </li>
+              <li>Ketuk menu <strong>titik tiga</strong> di kanan atas.</li>
+              <li>Pilih <strong>Instal aplikasi</strong> atau <strong>Tambahkan ke Layar utama</strong>.</li>
             </>
           )}
           {platform === 'other' && (
             <>
-              <li>
-                Klik ikon <strong>instal</strong> di bilah alamat browser.
-              </li>
-              <li>
-                Atau buka menu browser, lalu pilih <strong>Install KasKilat</strong> /{' '}
-                <strong>Install app</strong>.
-              </li>
+              <li>Klik ikon <strong>instal</strong> di bilah alamat browser.</li>
+              <li>Atau buka menu browser, lalu pilih <strong>Install KasKilat</strong> / <strong>Install app</strong>.</li>
             </>
           )}
         </ol>
         <p className="mt-4 text-xs text-slate-500 dark:text-slate-400">
-          Kalau menu tersebut tidak muncul (misalnya sedang dibuka dari dalam aplikasi lain),
-          salin alamat kaskilat.vercel.app lalu buka di Chrome atau Safari.
+          Kalau menu tidak muncul, buka kaskilat.vercel.app langsung dari Chrome atau Safari.
         </p>
       </Modal>
     </>
