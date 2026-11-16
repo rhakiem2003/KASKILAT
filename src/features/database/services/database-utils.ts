@@ -50,19 +50,21 @@ export function normalizeDatabase(raw: unknown): KasKilatDatabase | null {
 }
 
 /**
- * Gabungkan data tamu ke data Drive. ID yang sama dianggap transaksi yang sama.
+ * Gabungkan data cadangan dengan data aktif. ID yang sama mempertahankan data aktif.
  */
 export function mergeDatabases(
   base: KasKilatDatabase,
   incoming: KasKilatDatabase
 ): KasKilatDatabase {
   const transactionMap = new Map<string, Transaction>();
-  for (const tx of base.transactions) transactionMap.set(tx.id, tx);
+  // When restoring an older backup, keep the active local version of duplicate IDs.
+  // New IDs from the backup are still added; duplicate rows never silently overwrite local work.
   for (const tx of incoming.transactions) transactionMap.set(tx.id, tx);
+  for (const tx of base.transactions) transactionMap.set(tx.id, tx);
 
   const categoryMap = new Map<string, Category>();
-  for (const category of base.categories) categoryMap.set(category.id, category);
   for (const category of incoming.categories) categoryMap.set(category.id, category);
+  for (const category of base.categories) categoryMap.set(category.id, category);
 
   return {
     version: 1,
