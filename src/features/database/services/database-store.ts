@@ -77,7 +77,7 @@ function readLegacyGoogleEmail(): string | null {
 
 function clearLegacyGoogleSession(): void {
   try {
-    localStorage.removeItem(APP_CONFIG.STORAGE_KEYS.GOOGLE_SESSION);
+    localStorage.removeItem(APP_CONFIG.STORAGE_KEYS.LEGACY_GOOGLE_SESSION);
   } catch {
     // Local database does not depend on localStorage.
   }
