@@ -63,18 +63,7 @@ export default defineConfig({
         globPatterns: ['**/*.{js,css,html,svg,png,ico,woff,woff2}'],
         navigateFallback: 'index.html',
         cleanupOutdatedCaches: true,
-        runtimeCaching: [
-          {
-            // Drive API dan Google Identity selalu jaringan langsung.
-            urlPattern: /^https:\/\/(www\.googleapis\.com|accounts\.google\.com)\/.*/i,
-            handler: 'NetworkOnly',
-          },
-          {
-            // Database JSON tidak boleh pernah di-cache.
-            urlPattern: /kaskilat-database\.json/i,
-            handler: 'NetworkOnly',
-          },
-        ],
+        runtimeCaching: [],
       },
       devOptions: {
         enabled: false,
