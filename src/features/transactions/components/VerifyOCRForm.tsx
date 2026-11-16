@@ -116,6 +116,22 @@ export const VerifyOCRForm: React.FC<VerifyOCRFormProps> = ({
     if (recentPayment) setPaymentMethod(recentPayment.payment_method);
   };
 
+  const handleMerchantChange = (value: string) => {
+    setMerchant(value);
+    const merchantKey = normalizeMerchant(value);
+    if (!merchantKey) return;
+    const priorTransaction = database?.transactions.find((tx) =>
+      tx.type === type &&
+      normalizeMerchant(tx.merchant || '') === merchantKey &&
+      Boolean(tx.category_id)
+    );
+    if (priorTransaction?.category_id && filteredCategories.some(
+      (category) => category.id === priorTransaction.category_id
+    )) {
+      setCategoryId(priorTransaction.category_id);
+    }
+  };
+
   const handleAmountChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const digits = event.target.value.replace(/\D/g, '');
     setAmountStr(digits ? formatRupiah(Number(digits), false) : '');
@@ -191,7 +207,7 @@ export const VerifyOCRForm: React.FC<VerifyOCRFormProps> = ({
         <Input
           label="Toko / Pengirim / Penerima"
           value={merchant}
-          onChange={(event) => setMerchant(event.target.value)}
+          onChange={(event) => handleMerchantChange(event.target.value)}
           placeholder="Cth: Indomaret, Toko Sembako, Pelanggan"
         />
       </div>
