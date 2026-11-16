@@ -3,25 +3,16 @@
  * @description Local-first application database. No sign-in, background redirect, or cloud sync.
  */
 
-import type {
-  AppMode,
-  AppSnapshot,
-  KasKilatDatabase,
-} from '../types/database.type';
+import type { AppSnapshot, KasKilatDatabase } from '../types/database.type';
 import {
   GUEST_KEY,
+  clearLegacyLocalData,
   getLocalRecord,
   putLocalRecord,
   readLegacyLocalData,
   userKey,
-  clearLegacyLocalData,
 } from './local-database';
-import {
-  createTransactionId,
-  mergeDatabases,
-  normalizeDatabase,
-  sortTransactions,
-} from './database-utils';
+import { createTransactionId, mergeDatabases, normalizeDatabase, sortTransactions } from './database-utils';
 import { createEmptyDatabase, type TemplateType } from '../../../lib/templates';
 import { APP_CONFIG } from '../../../lib/constants';
 import type {
@@ -87,7 +78,7 @@ function clearLegacyGoogleSession(): void {
   try {
     localStorage.removeItem(APP_CONFIG.STORAGE_KEYS.GOOGLE_SESSION);
   } catch {
-    // localStorage may be unavailable; this is not required for local storage.
+    // Local database does not depend on localStorage.
   }
 }
 
@@ -99,50 +90,34 @@ export function initializeApp(): Promise<void> {
 }
 
 /**
- * Preserve any previous local records. The old account-keyed record is copied,
- * never deleted, so removing Google sign-in cannot destroy the user's cached data.
+ * Migrate the old local cache without deleting its original account-keyed record.
+ * When both guest and account caches exist, merge their distinct IDs and keep both
+ * source records untouched so a future recovery remains possible.
  */
 async function initializeLocalDatabase(): Promise<void> {
   setSnapshot({ status: 'loading' });
 
   try {
-    const local = await getLocalRecord(GUEST_KEY);
-    if (local?.database) {
+    const guest = await getLocalRecord(GUEST_KEY);
+    const oldEmail = readLegacyGoogleEmail();
+    const oldAccount = oldEmail ? await getLocalRecord(userKey(oldEmail)) : null;
+
+    if (guest?.database || oldAccount?.database) {
+      const database = guest?.database && oldAccount?.database
+        ? mergeDatabases(guest.database, oldAccount.database)
+        : (guest?.database ?? oldAccount?.database)!;
+
+      await persistDatabase(database);
       setSnapshot({
         status: 'ready',
         mode: 'guest',
         email: null,
-        database: local.database,
+        database,
         sync: { phase: 'local', lastSyncedAt: null },
         pendingUpgrade: null,
       });
       clearLegacyGoogleSession();
       return;
-    }
-
-    const oldEmail = readLegacyGoogleEmail();
-    if (oldEmail) {
-      const oldAccountRecord = await getLocalRecord(userKey(oldEmail));
-      if (oldAccountRecord?.database) {
-        const copied = {
-          ...oldAccountRecord,
-          key: GUEST_KEY,
-          pendingSync: false,
-          lastSyncedAt: null,
-          updatedAt: Date.now(),
-        };
-        await putLocalRecord(copied);
-        setSnapshot({
-          status: 'ready',
-          mode: 'guest',
-          email: null,
-          database: copied.database,
-          sync: { phase: 'local', lastSyncedAt: null },
-          pendingUpgrade: null,
-        });
-        clearLegacyGoogleSession();
-        return;
-      }
     }
 
     const legacy = readLegacyLocalData();
@@ -240,7 +215,6 @@ export async function addTransaction(input: CreateTransactionInput): Promise<Tra
     amount: Number(input.amount) || 0,
     created_at: new Date().toISOString(),
   };
-
   await commitDatabase({
     ...database,
     transactions: sortTransactions([transaction, ...database.transactions]),
@@ -255,7 +229,6 @@ export async function updateTransaction(
   const database = requireDatabase();
   const existing = database.transactions.find((tx) => tx.id === id);
   if (!existing) return null;
-
   const updated: Transaction = { ...existing, ...patch, id };
   await commitDatabase({
     ...database,
@@ -284,7 +257,6 @@ export async function addCategory(input: CreateCategoryInput): Promise<Category>
     icon: input.icon,
     created_at: nowIso(),
   };
-
   await commitDatabase({ ...database, categories: [...database.categories, category] });
   return category;
 }
@@ -302,9 +274,8 @@ export async function deleteCategory(id: string): Promise<void> {
 
 export function countLocalPhotos(): number {
   return (
-    snapshot.database?.transactions.filter((tx) =>
-      tx.photo_url?.startsWith('local://')
-    ).length ?? 0
+    snapshot.database?.transactions.filter((tx) => tx.photo_url?.startsWith('local://'))
+      .length ?? 0
   );
 }
 
@@ -330,7 +301,6 @@ export function normalizeImportedDatabase(raw: unknown): KasKilatDatabase | null
   return normalizeDatabase(raw);
 }
 
-/** Used by the backup restore flow to add records without losing current entries. */
 export function mergeWithCurrentDatabase(incoming: KasKilatDatabase): KasKilatDatabase {
   const current = snapshot.database;
   return current ? mergeDatabases(current, incoming) : incoming;
