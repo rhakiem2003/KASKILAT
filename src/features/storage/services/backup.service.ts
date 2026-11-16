@@ -5,7 +5,6 @@
 
 import {
   getSnapshot,
-  mergeWithCurrentDatabase,
   normalizeImportedDatabase,
   restoreDatabase,
 } from '../../database/services/database-store';
@@ -210,8 +209,7 @@ export async function restoreBackupFile(file: File): Promise<BackupRestoreResult
     }
   }
 
-  const merged = mergeWithCurrentDatabase(imported);
-  await restoreDatabase(merged);
+  await restoreDatabase(imported);
   return {
     transactionCount: imported.transactions.length,
     photoCount: restoredPhotos,
