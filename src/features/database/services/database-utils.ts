@@ -1,12 +1,60 @@
 /**
  * @file database-utils.ts
- * @description Validasi, penggabungan, dan pengurutan database KasKilat.
+ * @description Validation, merging, and ordering for KasKilat databases.
  */
 
-import { KasKilatDatabase } from '../types/database.type';
-import { Transaction } from '../../transactions/types/transaction.type';
-import { Category } from '../../categories/types/category.type';
+import type { KasKilatDatabase } from '../types/database.type';
+import type { Transaction } from '../../transactions/types/transaction.type';
+import type { Category } from '../../categories/types/category.type';
 import { isTemplateType } from '../../../lib/templates';
+
+function isObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function isOptionalString(value: unknown): boolean {
+  return value === undefined || typeof value === 'string';
+}
+
+function isOptionalNullableString(value: unknown): boolean {
+  return value === undefined || value === null || typeof value === 'string';
+}
+
+function isValidTransaction(value: unknown): value is Transaction {
+  if (!isObject(value)) return false;
+  return (
+    typeof value.id === 'string' &&
+    value.id.length > 0 &&
+    (value.type === 'in' || value.type === 'out') &&
+    Number.isFinite(Number(value.amount)) &&
+    typeof value.transaction_date === 'string' &&
+    value.transaction_date.length > 0 &&
+    typeof value.payment_method === 'string' &&
+    isOptionalNullableString(value.user_id) &&
+    isOptionalString(value.description) &&
+    isOptionalString(value.merchant) &&
+    isOptionalString(value.category_id) &&
+    isOptionalString(value.photo_url) &&
+    isOptionalString(value.ocr_raw_text) &&
+    (value.ocr_confidence === undefined ||
+      (typeof value.ocr_confidence === 'number' && Number.isFinite(value.ocr_confidence))) &&
+    isOptionalString(value.created_at)
+  );
+}
+
+function isValidCategory(value: unknown): value is Category {
+  if (!isObject(value)) return false;
+  return (
+    typeof value.id === 'string' &&
+    value.id.length > 0 &&
+    typeof value.name === 'string' &&
+    (value.type === 'in' || value.type === 'out') &&
+    typeof value.color === 'string' &&
+    typeof value.icon === 'string' &&
+    isOptionalNullableString(value.user_id) &&
+    isOptionalString(value.created_at)
+  );
+}
 
 export function sortTransactions(transactions: Transaction[]): Transaction[] {
   return [...transactions].sort((a, b) => {
@@ -17,30 +65,32 @@ export function sortTransactions(transactions: Transaction[]): Transaction[] {
   });
 }
 
+/**
+ * Reject malformed imports rather than silently dropping fields or accepting values
+ * that later UI code expects to be strings (e.g. photo_url and merchant).
+ */
 export function normalizeDatabase(raw: unknown): KasKilatDatabase | null {
-  if (!raw || typeof raw !== 'object') return null;
+  if (!isObject(raw)) return null;
   const candidate = raw as Partial<KasKilatDatabase>;
 
-  if (!Array.isArray(candidate.transactions) || !Array.isArray(candidate.categories)) {
+  if (
+    !Array.isArray(candidate.transactions) ||
+    !Array.isArray(candidate.categories) ||
+    !candidate.transactions.every(isValidTransaction) ||
+    !candidate.categories.every(isValidCategory)
+  ) {
     return null;
   }
 
-  const transactions = candidate.transactions.filter(
-    (tx): tx is Transaction =>
-      Boolean(tx) &&
-      typeof tx.id === 'string' &&
-      (tx.type === 'in' || tx.type === 'out') &&
-      Number.isFinite(Number(tx.amount))
-  );
-  const categories = candidate.categories.filter(
-    (cat): cat is Category =>
-      Boolean(cat) && typeof cat.id === 'string' && typeof cat.name === 'string'
-  );
+  const transactions = candidate.transactions.map((tx) => ({
+    ...tx,
+    amount: Number(tx.amount),
+  }));
 
   return {
     version: 1,
     transactions: sortTransactions(transactions),
-    categories,
+    categories: candidate.categories,
     lastUpdated:
       typeof candidate.lastUpdated === 'string'
         ? candidate.lastUpdated
@@ -50,15 +100,13 @@ export function normalizeDatabase(raw: unknown): KasKilatDatabase | null {
 }
 
 /**
- * Gabungkan data cadangan dengan data aktif. ID yang sama mempertahankan data aktif.
+ * Merge backup data with active data. Existing device records win duplicate IDs.
  */
 export function mergeDatabases(
   base: KasKilatDatabase,
   incoming: KasKilatDatabase
 ): KasKilatDatabase {
   const transactionMap = new Map<string, Transaction>();
-  // When restoring an older backup, keep the active local version of duplicate IDs.
-  // New IDs from the backup are still added; duplicate rows never silently overwrite local work.
   for (const tx of incoming.transactions) transactionMap.set(tx.id, tx);
   for (const tx of base.transactions) transactionMap.set(tx.id, tx);
 
