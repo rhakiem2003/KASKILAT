@@ -132,7 +132,11 @@ export default function App() {
       <main className="flex-1 max-w-6xl w-full mx-auto px-4 sm:px-6 py-5 pb-24 md:pb-12">
         {activeTab === 'dashboard' && (
           <div className="space-y-6">
-            <BalanceSummaryCard summary={summary} onScanClick={() => setIsAddModalOpen(true)} />
+            <BalanceSummaryCard
+              summary={summary}
+              template={database.template}
+              onScanClick={() => setIsAddModalOpen(true)}
+            />
             <CashflowChart30Days transactions={transactions} />
             <RecentTransactionsList
               transactions={transactions}
