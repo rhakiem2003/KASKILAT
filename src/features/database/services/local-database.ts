@@ -118,6 +118,23 @@ export async function putLocalRecord(record: LocalDatabaseRecord): Promise<void>
   await run<IDBValidKey>(STORE_NAME, 'readwrite', (store) => store.put(record));
 }
 
+/** Persist the migrated guest database and completion marker in one atomic transaction. */
+export async function putLocalRecordWithMetadata<T>(
+  record: LocalDatabaseRecord,
+  metadataKey: string,
+  metadataValue: T
+): Promise<void> {
+  const db = await openDatabase();
+  await new Promise<void>((resolve, reject) => {
+    const tx = db.transaction([STORE_NAME, META_STORE_NAME], 'readwrite');
+    tx.objectStore(STORE_NAME).put(record);
+    tx.objectStore(META_STORE_NAME).put({ key: metadataKey, value: metadataValue });
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error || new Error('Gagal menyimpan migrasi lokal.'));
+    tx.onabort = () => reject(tx.error || new Error('Migrasi lokal dibatalkan.'));
+  });
+}
+
 export async function deleteLocalRecord(key: string): Promise<void> {
   await run<undefined>(STORE_NAME, 'readwrite', (store) => store.delete(key));
 }
