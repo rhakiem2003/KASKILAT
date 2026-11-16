@@ -86,6 +86,7 @@ export const VerifyOCRForm: React.FC<VerifyOCRFormProps> = ({
     (category) => category.id === learnedDefaults.categoryId
   ) ? learnedDefaults.categoryId : (filteredCategories[0]?.id ?? '');
   const [categoryId, setCategoryId] = useState<string>(initialCategoryId);
+  const [categoryWasEdited, setCategoryWasEdited] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod | string>(
     learnedDefaults.paymentMethod
   );
@@ -94,6 +95,7 @@ export const VerifyOCRForm: React.FC<VerifyOCRFormProps> = ({
   // initialize the form, but never overwrite a choice the user is already making.
   const handleTypeChange = (newType: TransactionType) => {
     setType(newType);
+    setCategoryWasEdited(false);
     const nextCategories = categories.filter((category) => category.type === newType);
     const recentHistory = database?.transactions ?? [];
     const merchantKey = normalizeMerchant(merchant);
@@ -119,7 +121,7 @@ export const VerifyOCRForm: React.FC<VerifyOCRFormProps> = ({
   const handleMerchantChange = (value: string) => {
     setMerchant(value);
     const merchantKey = normalizeMerchant(value);
-    if (!merchantKey) return;
+    if (!merchantKey || categoryWasEdited) return;
     const priorTransaction = database?.transactions.find((tx) =>
       tx.type === type &&
       normalizeMerchant(tx.merchant || '') === merchantKey &&
@@ -219,7 +221,10 @@ export const VerifyOCRForm: React.FC<VerifyOCRFormProps> = ({
           </label>
           <select
             value={categoryId}
-            onChange={(event) => setCategoryId(event.target.value)}
+            onChange={(event) => {
+              setCategoryWasEdited(true);
+              setCategoryId(event.target.value);
+            }}
             className="w-full h-11 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 text-sm px-3.5 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
           >
             {filteredCategories.map((category) => (
