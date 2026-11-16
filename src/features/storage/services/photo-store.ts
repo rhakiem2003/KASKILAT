@@ -1,6 +1,6 @@
 /**
  * @file photo-store.ts
- * @description Penyimpanan blob foto struk di IndexedDB (cache Drive + fallback lokal).
+ * @description Receipt image blobs stored in IndexedDB on this device.
  */
 
 const DB_NAME = 'kaskilat_photos';
@@ -42,7 +42,7 @@ async function withStore<T>(
   });
 }
 
-interface PhotoRecord {
+export interface PhotoRecord {
   id: string;
   blob: Blob;
   createdAt: number;
@@ -56,6 +56,10 @@ export async function putPhotoBlob(id: string, blob: Blob): Promise<void> {
 export async function getPhotoBlob(id: string): Promise<Blob | null> {
   const record = await withStore<PhotoRecord | undefined>('readonly', (store) => store.get(id));
   return record?.blob ?? null;
+}
+
+export async function getAllPhotoBlobs(): Promise<PhotoRecord[]> {
+  return withStore<PhotoRecord[]>('readonly', (store) => store.getAll());
 }
 
 export async function deletePhotoBlob(id: string): Promise<void> {
