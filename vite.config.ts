@@ -18,7 +18,7 @@ export default defineConfig({
         name: 'KasKilat',
         short_name: 'KasKilat',
         description:
-          'Catat cashflow UMKM dan pribadi dari foto struk atau screenshot bukti transfer. Data tersimpan di Google Drive kamu sendiri.',
+          'Catat cashflow UMKM dan pribadi dari foto struk atau screenshot bukti transfer. Data tersimpan di perangkat; backup dapat dibagikan ke Drive pilihanmu.',
         lang: 'id',
         theme_color: '#059669',
         background_color: '#f8fafc',
