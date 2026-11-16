@@ -82,7 +82,10 @@ export const VerifyOCRForm: React.FC<VerifyOCRFormProps> = ({
   }, [database, parsedData, suggestedCategoryId, type]);
 
   const filteredCategories = categories.filter((category) => category.type === type);
-  const [categoryId, setCategoryId] = useState<string>(learnedDefaults.categoryId);
+  const initialCategoryId = filteredCategories.some(
+    (category) => category.id === learnedDefaults.categoryId
+  ) ? learnedDefaults.categoryId : (filteredCategories[0]?.id ?? '');
+  const [categoryId, setCategoryId] = useState<string>(initialCategoryId);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod | string>(
     learnedDefaults.paymentMethod
   );
