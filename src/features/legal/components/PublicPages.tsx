@@ -1,7 +1,6 @@
 /**
  * @file PublicPages.tsx
- * @description Halaman publik /about dan /privacy (tanpa React app/IndexedDB) untuk informasi produk
- * dan syarat verifikasi Google OAuth.
+ * @description Halaman publik /about dan /privacy (tanpa React app/IndexedDB) untuk informasi produk dan kebijakan penyimpanan lokal.
  */
 
 import React, { useEffect } from 'react';
@@ -21,7 +20,7 @@ import {
 import { KasKilatMark, KasKilatWordmark } from '../../../components/brand/KasKilatLogo';
 
 const GITHUB_URL = 'https://github.com/rhakiem2003/KASKILAT';
-const UPDATED_AT = '14 November 2026';
+const UPDATED_AT = '16 November 2026';
 
 function useDocumentTitle(title: string) {
   useEffect(() => {
@@ -191,22 +190,7 @@ export const PrivacyPage: React.FC = () => {
         </p>
       </Section>
 
-      <Section title="Google API Services User Data Policy">
-        <p className="text-xs leading-relaxed p-3 rounded-xl bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
-          KasKilat's use and transfer to any other app of information received from Google APIs will
-          adhere to the{' '}
-          <a
-            className="text-emerald-700 dark:text-emerald-400 underline"
-            href="https://developers.google.com/terms/api-services-user-data-policy"
-            target="_blank"
-            rel="noreferrer"
-          >
-            Google API Services User Data Policy
-          </a>
-          , including the Limited Use requirements.
-        </p>
-      </Section>
-    </Shell>
+   </Shell>
   );
 };
 
