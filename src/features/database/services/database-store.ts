@@ -64,7 +64,7 @@ async function persistDatabase(database: KasKilatDatabase): Promise<void> {
 
 function readLegacyGoogleEmail(): string | null {
   try {
-    const raw = localStorage.getItem(APP_CONFIG.STORAGE_KEYS.GOOGLE_SESSION);
+    const raw = localStorage.getItem(APP_CONFIG.STORAGE_KEYS.LEGACY_GOOGLE_SESSION);
     if (!raw) return null;
     const value = JSON.parse(raw) as { email?: unknown };
     return typeof value.email === 'string' && value.email.trim()
