@@ -68,6 +68,10 @@ export async function getLocalRecord(key: string): Promise<LocalDatabaseRecord |
   return record ?? null;
 }
 
+export async function getAllLocalRecords(): Promise<LocalDatabaseRecord[]> {
+  return run<LocalDatabaseRecord[]>('readonly', (store) => store.getAll());
+}
+
 export async function putLocalRecord(record: LocalDatabaseRecord): Promise<void> {
   await run('readwrite', (store) => store.put(record));
 }
