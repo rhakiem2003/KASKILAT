@@ -5,16 +5,19 @@
 
 import React from 'react';
 import { ArrowDownLeft, ArrowUpRight, Wallet, TrendingUp } from 'lucide-react';
-import { TransactionSummary } from '../../transactions/types/transaction.type';
+import type { TransactionSummary } from '../../transactions/types/transaction.type';
+import type { TemplateType } from '../../../lib/templates';
 import { formatRupiah } from '../../transactions/utils/formatRupiah';
 
 interface BalanceSummaryCardProps {
   summary: TransactionSummary;
+  template?: TemplateType;
   onScanClick: () => void;
 }
 
 export const BalanceSummaryCard: React.FC<BalanceSummaryCardProps> = ({
   summary,
+  template = 'umkm',
   onScanClick,
 }) => {
   const netProfitMonth = summary.totalIncomeMonth - summary.totalExpenseMonth;
@@ -30,7 +33,7 @@ export const BalanceSummaryCard: React.FC<BalanceSummaryCardProps> = ({
           <div>
             <div className="flex items-center gap-2 text-slate-400 text-xs font-medium mb-1">
               <Wallet className="w-4 h-4 text-emerald-400" />
-              <span>Total Saldo Kas Usaha</span>
+              <span>{template === 'personal' ? 'Total Saldo' : 'Total Saldo Kas Usaha'}</span>
             </div>
             <h2 className="text-3xl sm:text-4xl font-extrabold tracking-tight tabular-nums text-white">
               {formatRupiah(summary.totalBalance)}
@@ -51,7 +54,7 @@ export const BalanceSummaryCard: React.FC<BalanceSummaryCardProps> = ({
             onClick={onScanClick}
             className="flex items-center justify-center gap-2 px-5 py-3 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-sm shadow-md shadow-emerald-500/25 active:scale-[0.98] transition-all shrink-0 min-h-[48px]"
           >
-            <span>+ Foto Struk Kas</span>
+            <span>+ Catat Transaksi</span>
           </button>
         </div>
       </div>
