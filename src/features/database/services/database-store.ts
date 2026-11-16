@@ -1,15 +1,18 @@
 /**
  * @file database-store.ts
- * @description Local-first application database. No sign-in, background redirect, or cloud sync.
+ * @description Local-first IndexedDB database. Writes are serialized and published only after commit.
  */
 
 import type { AppSnapshot, KasKilatDatabase } from '../types/database.type';
 import {
+  ACCOUNT_CACHE_MIGRATION_KEY,
   GUEST_KEY,
   clearLegacyLocalData,
   getAllLocalRecords,
+  getLocalMetadata,
   getLocalRecord,
   putLocalRecord,
+  putLocalRecordWithMetadata,
   readLegacyLocalData,
   userKey,
 } from './local-database';
@@ -33,6 +36,7 @@ let snapshot: AppSnapshot = {
 };
 
 const listeners = new Set<() => void>();
+let mutationQueue: Promise<void> = Promise.resolve();
 
 function setSnapshot(patch: Partial<AppSnapshot>): void {
   snapshot = { ...snapshot, ...patch };
@@ -52,14 +56,18 @@ function nowIso(): string {
   return new Date().toISOString();
 }
 
-async function persistDatabase(database: KasKilatDatabase): Promise<void> {
-  await putLocalRecord({
+function toLocalRecord(database: KasKilatDatabase) {
+  return {
     key: GUEST_KEY,
     database,
     pendingSync: false,
     lastSyncedAt: null,
     updatedAt: Date.now(),
-  });
+  };
+}
+
+async function persistDatabase(database: KasKilatDatabase): Promise<void> {
+  await putLocalRecord(toLocalRecord(database));
 }
 
 function readLegacyGoogleEmail(): string | null {
@@ -91,26 +99,32 @@ export function initializeApp(): Promise<void> {
 }
 
 /**
- * Migrate the old local cache without deleting its original account-keyed record.
- * When both guest and account caches exist, merge their distinct IDs and keep both
- * source records untouched so a future recovery remains possible.
+ * Account-cache migration is committed atomically with a metadata marker. This
+ * prevents deleted transactions/categories from being re-imported on every reload.
+ * The old account record remains untouched for recovery.
  */
 async function initializeLocalDatabase(): Promise<void> {
   setSnapshot({ status: 'loading' });
 
   try {
     const guest = await getLocalRecord(GUEST_KEY);
-    const oldEmail = readLegacyGoogleEmail();
-    const accountRecords = (await getAllLocalRecords()).filter(
-      (record) => record.key.startsWith('user_') && Boolean(record.database)
-    );
-    // If the old session was already logged out, migrate an account cache only when
-    // exactly one exists. Never guess between multiple people's Google profiles.
-    const oldAccount = oldEmail
-      ? (accountRecords.find((record) => record.key === userKey(oldEmail)) ?? null)
-      : accountRecords.length === 1
-        ? accountRecords[0]
-        : null;
+    const migrationComplete =
+      (await getLocalMetadata<boolean>(ACCOUNT_CACHE_MIGRATION_KEY)) === true;
+
+    let oldAccount = null;
+    if (!migrationComplete) {
+      const oldEmail = readLegacyGoogleEmail();
+      const accountRecords = (await getAllLocalRecords()).filter(
+        (record) => record.key.startsWith('user_') && Boolean(record.database)
+      );
+      // If the old session was already logged out, only migrate when exactly one
+      // account cache exists. Never choose between multiple people's profiles.
+      oldAccount = oldEmail
+        ? accountRecords.find((record) => record.key === userKey(oldEmail)) ?? null
+        : accountRecords.length === 1
+          ? accountRecords[0]
+          : null;
+    }
 
     if (guest?.database || oldAccount?.database) {
       const database = guest?.database && oldAccount?.database
@@ -119,7 +133,16 @@ async function initializeLocalDatabase(): Promise<void> {
           : mergeDatabases(oldAccount.database, guest.database)
         : (guest?.database ?? oldAccount?.database)!;
 
-      await persistDatabase(database);
+      if (oldAccount) {
+        await putLocalRecordWithMetadata(
+          toLocalRecord(database),
+          ACCOUNT_CACHE_MIGRATION_KEY,
+          true
+        );
+      } else if (!guest?.database) {
+        await persistDatabase(database);
+      }
+
       setSnapshot({
         status: 'ready',
         mode: 'guest',
@@ -196,22 +219,42 @@ export async function startAsGuest(template: TemplateType = 'umkm'): Promise<voi
   });
 }
 
-async function commitDatabase(next: KasKilatDatabase): Promise<void> {
-  const database = { ...next, lastUpdated: nowIso() };
-  setSnapshot({
-    status: 'ready',
-    mode: 'guest',
-    email: null,
-    database,
-    sync: { phase: 'local', lastSyncedAt: null },
-    pendingUpgrade: null,
+interface MutationResult<T> {
+  database: KasKilatDatabase;
+  result: T;
+}
+
+/**
+ * Serialize all read-modify-write operations. The UI snapshot is updated only after
+ * IndexedDB confirms transaction completion, so failed writes remain retryable.
+ */
+function mutateDatabase<T>(
+  mutate: (current: KasKilatDatabase) => MutationResult<T>
+): Promise<T> {
+  const task = mutationQueue.then(async () => {
+    const current = requireDatabase();
+    const mutation = mutate(current);
+    const database = { ...mutation.database, lastUpdated: nowIso() };
+
+    await persistDatabase(database);
+    setSnapshot({
+      status: 'ready',
+      mode: 'guest',
+      email: null,
+      database,
+      sync: { phase: 'local', lastSyncedAt: null },
+      pendingUpgrade: null,
+    });
+    return mutation.result;
   });
-  await persistDatabase(database);
+
+  mutationQueue = task.then(() => undefined, () => undefined);
+  return task;
 }
 
 /** Replace the active local database after an explicit backup restore. */
 export async function restoreDatabase(database: KasKilatDatabase): Promise<void> {
-  await commitDatabase(database);
+  await mutateDatabase(() => ({ database, result: undefined }));
 }
 
 function requireDatabase(): KasKilatDatabase {
@@ -220,74 +263,88 @@ function requireDatabase(): KasKilatDatabase {
 }
 
 export async function addTransaction(input: CreateTransactionInput): Promise<Transaction> {
-  const database = requireDatabase();
-  const transaction: Transaction = {
-    ...input,
-    id: input.id ?? createTransactionId(),
-    amount: Number(input.amount) || 0,
-    created_at: new Date().toISOString(),
-  };
-  await commitDatabase({
-    ...database,
-    transactions: sortTransactions([transaction, ...database.transactions]),
+  return mutateDatabase((database) => {
+    const transaction: Transaction = {
+      ...input,
+      id: input.id ?? createTransactionId(),
+      amount: Number(input.amount) || 0,
+      created_at: new Date().toISOString(),
+    };
+    return {
+      database: {
+        ...database,
+        transactions: sortTransactions([transaction, ...database.transactions]),
+      },
+      result: transaction,
+    };
   });
-  return transaction;
 }
 
 export async function updateTransaction(
   id: string,
   patch: Partial<CreateTransactionInput>
 ): Promise<Transaction | null> {
-  const database = requireDatabase();
-  const existing = database.transactions.find((tx) => tx.id === id);
-  if (!existing) return null;
-  const updated: Transaction = { ...existing, ...patch, id };
-  await commitDatabase({
-    ...database,
-    transactions: sortTransactions(
-      database.transactions.map((tx) => (tx.id === id ? updated : tx))
-    ),
+  return mutateDatabase((database) => {
+    const existing = database.transactions.find((tx) => tx.id === id);
+    if (!existing) return { database, result: null };
+    const updated: Transaction = { ...existing, ...patch, id };
+    return {
+      database: {
+        ...database,
+        transactions: sortTransactions(
+          database.transactions.map((tx) => (tx.id === id ? updated : tx))
+        ),
+      },
+      result: updated,
+    };
   });
-  return updated;
 }
 
 export async function deleteTransaction(id: string): Promise<void> {
-  const database = requireDatabase();
-  await commitDatabase({
-    ...database,
-    transactions: database.transactions.filter((tx) => tx.id !== id),
-  });
+  await mutateDatabase((database) => ({
+    database: {
+      ...database,
+      transactions: database.transactions.filter((tx) => tx.id !== id),
+    },
+    result: undefined,
+  }));
 }
 
 export async function addCategory(input: CreateCategoryInput): Promise<Category> {
-  const database = requireDatabase();
-  const category: Category = {
-    id: `cat-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-    name: input.name.trim(),
-    type: input.type,
-    color: input.color,
-    icon: input.icon,
-    created_at: nowIso(),
-  };
-  await commitDatabase({ ...database, categories: [...database.categories, category] });
-  return category;
+  return mutateDatabase((database) => {
+    const category: Category = {
+      id: `cat-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      name: input.name.trim(),
+      type: input.type,
+      color: input.color,
+      icon: input.icon,
+      created_at: nowIso(),
+    };
+    return {
+      database: { ...database, categories: [...database.categories, category] },
+      result: category,
+    };
+  });
 }
 
 export async function deleteCategory(id: string): Promise<void> {
-  const database = requireDatabase();
-  await commitDatabase({
-    ...database,
-    categories: database.categories.filter((category) => category.id !== id),
-    transactions: database.transactions.map((tx) =>
-      tx.category_id === id ? { ...tx, category_id: undefined } : tx
-    ),
-  });
+  await mutateDatabase((database) => ({
+    database: {
+      ...database,
+      categories: database.categories.filter((category) => category.id !== id),
+      transactions: database.transactions.map((tx) =>
+        tx.category_id === id ? { ...tx, category_id: undefined } : tx
+      ),
+    },
+    result: undefined,
+  }));
 }
 
 export function countLocalPhotos(): number {
   return (
-    snapshot.database?.transactions.filter((tx) => tx.photo_url?.startsWith('local://'))
-      .length ?? 0
+    snapshot.database?.transactions.filter(
+      (tx) => typeof tx.photo_url === 'string' && tx.photo_url.startsWith('local://')
+    ).length ?? 0
   );
 }
 
@@ -302,7 +359,7 @@ export function filterTransactions(
     if (filter.endDate && tx.transaction_date > filter.endDate) return false;
     if (filter.categoryId && tx.category_id !== filter.categoryId) return false;
     if (query) {
-      const haystack = `${tx.merchant ?? ''} ${tx.description ?? ''}`.toLowerCase();
+      const haystack = `${String(tx.merchant ?? '')} ${String(tx.description ?? '')}`.toLowerCase();
       if (!haystack.includes(query)) return false;
     }
     return true;
