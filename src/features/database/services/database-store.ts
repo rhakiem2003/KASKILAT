@@ -7,6 +7,7 @@ import type { AppSnapshot, KasKilatDatabase } from '../types/database.type';
 import {
   GUEST_KEY,
   clearLegacyLocalData,
+  getAllLocalRecords,
   getLocalRecord,
   putLocalRecord,
   readLegacyLocalData,
@@ -100,7 +101,16 @@ async function initializeLocalDatabase(): Promise<void> {
   try {
     const guest = await getLocalRecord(GUEST_KEY);
     const oldEmail = readLegacyGoogleEmail();
-    const oldAccount = oldEmail ? await getLocalRecord(userKey(oldEmail)) : null;
+    const accountRecords = (await getAllLocalRecords()).filter(
+      (record) => record.key.startsWith('user_') && Boolean(record.database)
+    );
+    // If the old session was already logged out, migrate an account cache only when
+    // exactly one exists. Never guess between multiple people's Google profiles.
+    const oldAccount = oldEmail
+      ? (accountRecords.find((record) => record.key === userKey(oldEmail)) ?? null)
+      : accountRecords.length === 1
+        ? accountRecords[0]
+        : null;
 
     if (guest?.database || oldAccount?.database) {
       const database = guest?.database && oldAccount?.database
