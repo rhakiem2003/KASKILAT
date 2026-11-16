@@ -114,7 +114,9 @@ async function initializeLocalDatabase(): Promise<void> {
 
     if (guest?.database || oldAccount?.database) {
       const database = guest?.database && oldAccount?.database
-        ? mergeDatabases(guest.database, oldAccount.database)
+        ? guest.database.lastUpdated >= oldAccount.database.lastUpdated
+          ? mergeDatabases(guest.database, oldAccount.database)
+          : mergeDatabases(oldAccount.database, guest.database)
         : (guest?.database ?? oldAccount?.database)!;
 
       await persistDatabase(database);
