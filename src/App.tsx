@@ -1,6 +1,6 @@
 /**
  * @file App.tsx
- * @description Root KasKilat — onboarding tamu/akun, dashboard, transaksi, laporan, OCR, dan sync Drive.
+ * @description Local-first KasKilat: transactions, reports, receipt scanning and settings.
  */
 
 import React, { useEffect, useState } from 'react';
@@ -20,19 +20,13 @@ import { TransactionDetailModal } from './features/transactions/components/Trans
 import { CategoryListModal } from './features/categories/components/CategoryListModal';
 import { SettingsModal } from './features/auth/components/SettingsModal';
 import { OnboardingScreen } from './features/auth/components/OnboardingScreen';
-import { GuestWarningModal } from './features/auth/components/GuestWarningModal';
-import { GuestUpgradeModal } from './features/auth/components/GuestUpgradeModal';
 import { PhotoLightboxModal } from './features/transactions/components/PhotoLightboxModal';
 import { useTransactions } from './features/transactions/hooks/useTransactions';
 import { useCategories } from './features/categories/hooks/useCategories';
 import { useCreateTransaction } from './features/transactions/hooks/useCreateTransaction';
 import { useAppDatabase } from './features/database/hooks/useAppDatabase';
-import {
-  initializeApp,
-  markGuestWarningShown,
-  shouldShowGuestWarning,
-} from './features/database/services/database-store';
-import { Transaction, CreateTransactionInput } from './features/transactions/types/transaction.type';
+import { initializeApp } from './features/database/services/database-store';
+import type { Transaction, CreateTransactionInput } from './features/transactions/types/transaction.type';
 import { deleteReceiptPhoto } from './features/storage/services/photo.service';
 import { APP_CONFIG } from './lib/constants';
 import {
@@ -46,7 +40,7 @@ import type { ImageKind } from './lib/image-source';
 import { Loader2 } from 'lucide-react';
 
 export default function App() {
-  const { status, mode, database, pendingUpgrade } = useAppDatabase();
+  const { status, database } = useAppDatabase();
   const [activeTab, setActiveTab] = useState<'dashboard' | 'transactions' | 'reports'>('dashboard');
 
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -55,7 +49,6 @@ export default function App() {
   const [isManualModalOpen, setIsManualModalOpen] = useState(false);
   const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
-  const [isGuestWarningOpen, setIsGuestWarningOpen] = useState(false);
   const [selectedTransaction, setSelectedTransaction] = useState<Transaction | null>(null);
   const [lightboxPhotoUrl, setLightboxPhotoUrl] = useState<string | null>(null);
   const [sharedQueue, setSharedQueue] = useState<File[]>([]);
@@ -93,29 +86,19 @@ export default function App() {
     setIsScanModalOpen(true);
   }, [currentSharedImage]);
 
-  const maybeWarnGuest = () => {
-    if (mode === 'guest' && shouldShowGuestWarning()) {
-      setIsGuestWarningOpen(true);
-    }
-  };
-
   const handleSaveFromScan = async (input: CreateTransactionInput) => {
     await saveTransaction(input);
-    maybeWarnGuest();
   };
 
   const handleSaveFromManual = async (input: CreateTransactionInput) => {
     await saveTransaction(input);
     setIsManualModalOpen(false);
-    maybeWarnGuest();
   };
 
   const handleDeleteTransaction = async (id: string) => {
     const photoRef = selectedTransaction?.id === id ? selectedTransaction.photo_url : undefined;
     await deleteTransaction(id);
-    if (photoRef) {
-      await deleteReceiptPhoto(photoRef);
-    }
+    if (photoRef) await deleteReceiptPhoto(photoRef);
     setSelectedTransaction(null);
   };
 
@@ -134,9 +117,7 @@ export default function App() {
     );
   }
 
-  if (status === 'onboarding' || !database) {
-    return <OnboardingScreen />;
-  }
+  if (status === 'onboarding' || !database) return <OnboardingScreen />;
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex flex-col font-sans">
@@ -151,10 +132,7 @@ export default function App() {
       <main className="flex-1 max-w-6xl w-full mx-auto px-4 sm:px-6 py-5 pb-24 md:pb-12">
         {activeTab === 'dashboard' && (
           <div className="space-y-6">
-            <BalanceSummaryCard
-              summary={summary}
-              onScanClick={() => setIsAddModalOpen(true)}
-            />
+            <BalanceSummaryCard summary={summary} onScanClick={() => setIsAddModalOpen(true)} />
             <CashflowChart30Days transactions={transactions} />
             <RecentTransactionsList
               transactions={transactions}
@@ -177,9 +155,7 @@ export default function App() {
           />
         )}
 
-        {activeTab === 'reports' && (
-          <ReportView transactions={transactions} categories={categories} />
-        )}
+        {activeTab === 'reports' && <ReportView transactions={transactions} categories={categories} />}
       </main>
 
       <BottomNavigation
@@ -253,20 +229,7 @@ export default function App() {
         onDeleteCategory={removeCategory}
       />
 
-      <SettingsModal
-        isOpen={isSettingsModalOpen}
-        onClose={() => setIsSettingsModalOpen(false)}
-      />
-
-      <GuestWarningModal
-        isOpen={isGuestWarningOpen}
-        onClose={() => {
-          markGuestWarningShown();
-          setIsGuestWarningOpen(false);
-        }}
-      />
-
-      {pendingUpgrade && <GuestUpgradeModal request={pendingUpgrade} />}
+      <SettingsModal isOpen={isSettingsModalOpen} onClose={() => setIsSettingsModalOpen(false)} />
 
       <PhotoLightboxModal
         photoUrl={lightboxPhotoUrl}
