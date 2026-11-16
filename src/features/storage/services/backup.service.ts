@@ -58,9 +58,7 @@ function toBase64(blob: Blob): Promise<string> {
 function fromBase64(value: string, mimeType: string): Blob {
   const binary = atob(value);
   const bytes = new Uint8Array(binary.length);
-  for (let index = 0; index < binary.length; index += 1) {
-    bytes[index] = binary.charCodeAt(index);
-  }
+  for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
   return new Blob([bytes], { type: mimeType || 'application/octet-stream' });
 }
 
@@ -90,7 +88,6 @@ export async function createBackupFile(): Promise<BackupExportResult> {
       missingPhotoCount += 1;
       continue;
     }
-
     photos.push({
       id: storageId,
       mimeType: photo.type || 'image/jpeg',
@@ -105,13 +102,13 @@ export async function createBackupFile(): Promise<BackupExportResult> {
     database,
     photos,
   };
-
   const date = new Date();
   const stamp = [
     date.getFullYear(),
     String(date.getMonth() + 1).padStart(2, '0'),
     String(date.getDate()).padStart(2, '0'),
   ].join('');
+
   return {
     blob: new Blob([JSON.stringify(payload)], { type: 'application/json' }),
     fileName: `kaskilat-backup-${stamp}.kaskilat`,
@@ -122,7 +119,7 @@ export async function createBackupFile(): Promise<BackupExportResult> {
 }
 
 /**
- * Supports both new .kaskilat packages and the previous plain database JSON file.
+ * Supports .kaskilat packages and previous plain JSON database exports.
  * Imported records are merged by stable IDs; records not present in the backup remain.
  */
 export async function restoreBackupFile(file: File): Promise<BackupRestoreResult> {
@@ -139,7 +136,6 @@ export async function restoreBackupFile(file: File): Promise<BackupRestoreResult
 
   let rawDatabase: unknown = parsed;
   let photos: BackupPhoto[] = [];
-
   if (parsed && typeof parsed === 'object' && 'format' in parsed) {
     const packageData = parsed as Partial<BackupFile>;
     if (packageData.format !== BACKUP_FORMAT || packageData.version !== BACKUP_VERSION) {
@@ -150,20 +146,22 @@ export async function restoreBackupFile(file: File): Promise<BackupRestoreResult
   }
 
   const imported = normalizeImportedDatabase(rawDatabase);
-  if (!imported) {
-    throw new Error('Struktur file tidak dikenali sebagai database KasKilat.');
-  }
+  if (!imported) throw new Error('Struktur file tidak dikenali sebagai database KasKilat.');
 
+  const hadCurrentDatabase = Boolean(getSnapshot().database);
+  const restoredPhotoIds = new Set<string>();
   let restoredPhotos = 0;
+
   for (const photo of photos) {
     if (
       !photo ||
       typeof photo.id !== 'string' ||
       typeof photo.data !== 'string' ||
-      typeof photo.mimeType !== 'string'
-    ) {
-      continue;
-    }
+      typeof photo.mimeType !== 'string' ||
+      restoredPhotoIds.has(photo.id)
+    ) continue;
+
+    restoredPhotoIds.add(photo.id);
     try {
       await putPhotoBlob(photo.id, fromBase64(photo.data, photo.mimeType));
       restoredPhotos += 1;
@@ -177,6 +175,6 @@ export async function restoreBackupFile(file: File): Promise<BackupRestoreResult
   return {
     transactionCount: imported.transactions.length,
     photoCount: restoredPhotos,
-    merged: Boolean(getSnapshot().database),
+    merged: hadCurrentDatabase,
   };
 }
