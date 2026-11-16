@@ -254,7 +254,10 @@ function mutateDatabase<T>(
 
 /** Replace the active local database after an explicit backup restore. */
 export async function restoreDatabase(database: KasKilatDatabase): Promise<void> {
-  await mutateDatabase(() => ({ database, result: undefined }));
+  await mutateDatabase((current) => ({
+    database: mergeDatabases(current, database),
+    result: undefined,
+  }));
 }
 
 function requireDatabase(): KasKilatDatabase {
@@ -370,7 +373,3 @@ export function normalizeImportedDatabase(raw: unknown): KasKilatDatabase | null
   return normalizeDatabase(raw);
 }
 
-export function mergeWithCurrentDatabase(incoming: KasKilatDatabase): KasKilatDatabase {
-  const current = snapshot.database;
-  return current ? mergeDatabases(current, incoming) : incoming;
-}
