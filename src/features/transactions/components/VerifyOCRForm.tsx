@@ -107,13 +107,14 @@ export const VerifyOCRForm: React.FC<VerifyOCRFormProps> = ({
         )?.category_id
       : undefined;
     const mostFrequent = recentHistory.find((tx) => tx.type === newType && tx.category_id)?.category_id;
-    setCategoryId(
-      learnedForMerchant ||
-      (newType === parsedData?.detectedType ? suggestedCategoryId : undefined) ||
-      mostFrequent ||
-      nextCategories[0]?.id ||
-      ''
+    const preferredCategory = [
+      learnedForMerchant,
+      newType === parsedData?.detectedType ? suggestedCategoryId : undefined,
+      mostFrequent,
+    ].find((candidate) =>
+      Boolean(candidate && nextCategories.some((category) => category.id === candidate))
     );
+    setCategoryId(preferredCategory || nextCategories[0]?.id || '');
     const recentPayment = recentHistory.find((tx) => tx.type === newType && tx.payment_method);
     if (recentPayment) setPaymentMethod(recentPayment.payment_method);
   };
