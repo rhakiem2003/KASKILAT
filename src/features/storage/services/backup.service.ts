@@ -13,7 +13,7 @@ import { getPhotoBlob, putPhotoBlob } from './photo-store';
 
 const BACKUP_FORMAT = 'kaskilat-backup';
 const BACKUP_VERSION = 1;
-const MAX_RESTORE_SIZE = 150 * 1024 * 1024;
+const MAX_BACKUP_SIZE = 150 * 1024 * 1024;
 
 interface BackupPhoto {
   id: string;
@@ -56,10 +56,19 @@ function toBase64(blob: Blob): Promise<string> {
 }
 
 function fromBase64(value: string, mimeType: string): Blob {
+  if (!value || value.length % 4 !== 0 || !/^[A-Za-z0-9+/]*={0,2}$/.test(value)) {
+    throw new Error('Data foto di dalam backup tidak valid.');
+  }
   const binary = atob(value);
   const bytes = new Uint8Array(binary.length);
-  for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
   return new Blob([bytes], { type: mimeType || 'application/octet-stream' });
+}
+
+function isObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 function photoStorageId(reference: string): string | null {
@@ -102,6 +111,14 @@ export async function createBackupFile(): Promise<BackupExportResult> {
     database,
     photos,
   };
+  const serialized = JSON.stringify(payload);
+  const blob = new Blob([serialized], { type: 'application/json' });
+  if (blob.size > MAX_BACKUP_SIZE) {
+    throw new Error(
+      'File cadangan melebihi batas 150 MB. Hapus beberapa foto struk lama atau buat beberapa cadangan terpisah.'
+    );
+  }
+
   const date = new Date();
   const stamp = [
     date.getFullYear(),
@@ -110,7 +127,7 @@ export async function createBackupFile(): Promise<BackupExportResult> {
   ].join('');
 
   return {
-    blob: new Blob([JSON.stringify(payload)], { type: 'application/json' }),
+    blob,
     fileName: `kaskilat-backup-${stamp}.kaskilat`,
     transactionCount: database.transactions.length,
     photoCount: photos.length,
@@ -120,10 +137,10 @@ export async function createBackupFile(): Promise<BackupExportResult> {
 
 /**
  * Supports .kaskilat packages and previous plain JSON database exports.
- * Imported records are merged by stable IDs; records not present in the backup remain.
+ * Imported records are merged by stable IDs; current device records are retained.
  */
 export async function restoreBackupFile(file: File): Promise<BackupRestoreResult> {
-  if (file.size > MAX_RESTORE_SIZE) {
+  if (file.size > MAX_BACKUP_SIZE) {
     throw new Error('File backup terlalu besar. Batas pemulihan adalah 150 MB.');
   }
 
@@ -135,38 +152,61 @@ export async function restoreBackupFile(file: File): Promise<BackupRestoreResult
   }
 
   let rawDatabase: unknown = parsed;
-  let photos: BackupPhoto[] = [];
-  if (parsed && typeof parsed === 'object' && 'format' in parsed) {
-    const packageData = parsed as Partial<BackupFile>;
-    if (packageData.format !== BACKUP_FORMAT || packageData.version !== BACKUP_VERSION) {
+  let rawPhotos: unknown[] = [];
+  if (isObject(parsed) && 'format' in parsed) {
+    if (parsed.format !== BACKUP_FORMAT || parsed.version !== BACKUP_VERSION) {
       throw new Error('Versi atau format backup tidak didukung.');
     }
-    rawDatabase = packageData.database;
-    photos = Array.isArray(packageData.photos) ? packageData.photos : [];
+    if (!Array.isArray(parsed.photos)) {
+      throw new Error('Daftar foto di dalam file backup tidak valid.');
+    }
+    rawDatabase = parsed.database;
+    rawPhotos = parsed.photos;
   }
 
   const imported = normalizeImportedDatabase(rawDatabase);
-  if (!imported) throw new Error('Struktur file tidak dikenali sebagai database KasKilat.');
+  if (!imported) {
+    throw new Error('Struktur data backup tidak valid. Periksa file sebelum mencoba lagi.');
+  }
+
+  // Validate and decode every photo before writing anything to the photo store.
+  const decodedPhotos: Array<{ id: string; blob: Blob }> = [];
+  const restoredPhotoIds = new Set<string>();
+  for (const value of rawPhotos) {
+    if (
+      !isObject(value) ||
+      typeof value.id !== 'string' ||
+      !value.id.trim() ||
+      typeof value.data !== 'string' ||
+      typeof value.mimeType !== 'string' ||
+      !value.mimeType.trim()
+    ) {
+      throw new Error('Ada data foto yang tidak valid di dalam file backup.');
+    }
+    if (restoredPhotoIds.has(value.id)) continue;
+    restoredPhotoIds.add(value.id);
+    decodedPhotos.push({
+      id: value.id,
+      blob: fromBase64(value.data, value.mimeType),
+    });
+  }
 
   const hadCurrentDatabase = Boolean(getSnapshot().database);
-  const restoredPhotoIds = new Set<string>();
   let restoredPhotos = 0;
 
-  for (const photo of photos) {
-    if (
-      !photo ||
-      typeof photo.id !== 'string' ||
-      typeof photo.data !== 'string' ||
-      typeof photo.mimeType !== 'string' ||
-      restoredPhotoIds.has(photo.id)
-    ) continue;
+  for (const photo of decodedPhotos) {
+    // A current photo with the same key belongs to the active database; never replace it
+    // with bytes from an imported backup that may be older or unrelated.
+    const existingPhoto = await getPhotoBlob(photo.id);
+    if (existingPhoto) continue;
 
-    restoredPhotoIds.add(photo.id);
     try {
-      await putPhotoBlob(photo.id, fromBase64(photo.data, photo.mimeType));
+      await putPhotoBlob(photo.id, photo.blob);
       restoredPhotos += 1;
     } catch (error) {
-      console.warn('[Backup] Foto tidak dapat dipulihkan:', error);
+      throw new Error(
+        `Pemulihan dihentikan karena foto gagal disimpan. Data transaksi belum diubah. Detail: ${error instanceof Error ? error.message : 'kesalahan penyimpanan'}`
+      );
     }
   }
 
